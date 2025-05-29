@@ -1,0 +1,15 @@
+{
+    "dataset": "zkdeng/spiderTraining5-100",
+    "dataset_host": "huggingface",
+    "model": "microsoft/resnet-50",
+    "weights": "weights/pytorch_model.bin",
+    "learning_rate": 5e-4,
+    "num_train_epochs":2,
+    "batch_size":16,
+    "num_labels": 5,
+    "wandb": "False",
+    "push_to_hub": "False",
+    "output_dir": "resnet",
+    "loss_function": "cost_matrix_cross_entropy"
+
+}
