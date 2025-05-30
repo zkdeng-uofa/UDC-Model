@@ -1,0 +1,44 @@
+{
+  "resnet50": {
+    "image_mean": [0.485, 0.456, 0.406],
+    "image_std": [0.229, 0.224, 0.225],
+    "size": {"height": 224, "width": 224},
+    "crop_pct": 0.875,
+    "interpolation": "bilinear"
+  },
+  "convnext_base": {
+    "image_mean": [0.485, 0.456, 0.406],
+    "image_std": [0.229, 0.224, 0.225],
+    "size": {"shortest_edge": 224},
+    "crop_pct": 0.875,
+    "interpolation": "bicubic"
+  },
+  "vit_base": {
+    "image_mean": [0.5, 0.5, 0.5],
+    "image_std": [0.5, 0.5, 0.5],
+    "size": {"height": 224, "width": 224},
+    "crop_pct": 0.9,
+    "interpolation": "bicubic"
+  },
+  "efficientnet_b0": {
+    "image_mean": [0.485, 0.456, 0.406],
+    "image_std": [0.229, 0.224, 0.225],
+    "size": {"shortest_edge": 224},
+    "crop_pct": 1.0,
+    "interpolation": "bicubic"
+  },
+  "swin_base": {
+    "image_mean": [0.485, 0.456, 0.406],
+    "image_std": [0.229, 0.224, 0.225],
+    "size": {"height": 224, "width": 224},
+    "crop_pct": 0.9,
+    "interpolation": "bicubic"
+  },
+  "custom_high_res": {
+    "image_mean": [0.485, 0.456, 0.406],
+    "image_std": [0.229, 0.224, 0.225],
+    "size": {"height": 384, "width": 384},
+    "crop_pct": 0.95,
+    "interpolation": "bicubic"
+  }
+} 

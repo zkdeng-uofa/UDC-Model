@@ -21,7 +21,6 @@ from transformers import (
     set_seed, 
     TrainingArguments, 
     Trainer, 
-    AutoImageProcessor,
     AutoModelForImageClassification
     )
 from transformers.utils import logging
@@ -31,6 +30,7 @@ from torchvision import transforms
 # Import from models
 from model.ResNetOld import ResNetConfig, ResNetForImageClassification
 from utils.loss_functions import LossFunctions
+from utils.image_processor import CustomImageProcessor
 from utils.utils import (
     collate_fn,
     compute_metrics,
@@ -81,37 +81,6 @@ class CustomTrainer(Trainer):
             loss = loss_fxn(logits, labels)
         return (loss, logits, labels)
 
-class ImageProcessor:
-    def __init__(self):
-        self.transform = transforms.Compose([
-            transforms.Resize(256),              # Resize the shorter side to 256 pixels
-            transforms.CenterCrop(224),          # Center crop to 224x224
-            transforms.ToTensor(),               # Convert PIL image to a PyTorch tensor
-            transforms.Normalize(                 # Normalize using ImageNet statistics
-                mean=[0.485, 0.456, 0.406],
-                std=[0.229, 0.224, 0.225]
-            )
-        ])
-
-    def __call__(self, image):
-        """
-        Process an input image using the defined transformations.
-        Args:
-            image (PIL.Image or np.array): The input image.
-        Returns:
-            torch.Tensor: Preprocessed image tensor.
-        """
-        if isinstance(image, Image.Image):
-            return self.transform(image)
-        elif isinstance(image, torch.Tensor):
-            # If already a tensor, apply normalization only
-            return transforms.Normalize(
-                mean=[0.485, 0.456, 0.406],
-                std=[0.229, 0.224, 0.225]
-            )(image)
-        else:
-            raise ValueError("Input must be a PIL image or torch.Tensor")
-
 # Main function
 def main(script_args):
 
@@ -130,7 +99,8 @@ def main(script_args):
         })
     #Load dataset
 
-    image_processor = AutoImageProcessor.from_pretrained(script_args.model, use_fast=True)
+    # Use our custom image processor instead of AutoImageProcessor
+    image_processor = CustomImageProcessor.from_pretrained(script_args.model)
 
     if script_args.dataset_host == "huggingface":
         train_ds, val_ds, test_ds = preprocess_hf_dataset(script_args.dataset, script_args.model)
@@ -237,7 +207,7 @@ def main(script_args):
         args=training_args,
         train_dataset=train_ds,
         eval_dataset=val_ds,
-        processing_class=image_processor,  # AutoImageProcessor works as a tokenizer here for image tasks
+        processing_class=image_processor,  # CustomImageProcessor works as a tokenizer here for image tasks
         compute_metrics=compute_metrics,
         data_collator=collate_fn,
         loss_fxn=script_args.loss_function,

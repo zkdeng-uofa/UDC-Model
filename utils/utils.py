@@ -8,7 +8,7 @@ import numpy as np
 import torchvision.transforms as transforms
 from evaluate import load
 from dataclasses import dataclass, field
-from transformers import HfArgumentParser, AutoImageProcessor
+from transformers import HfArgumentParser
 from datasets import load_dataset
 from typing import List, Optional, Union
 from pathlib import Path
@@ -16,6 +16,9 @@ from pathlib import Path
 from collections import Counter
 from datasets import Dataset
 import random
+
+# Import our custom image processor
+from utils.image_processor import CustomImageProcessor
 
 # Try to import visualization libraries (they might not be installed)
 try:
@@ -181,7 +184,7 @@ def preprocess_hf_dataset(dataset_name, model_name):
     """
     dataset = load_dataset(dataset_name)
 
-    image_processor = AutoImageProcessor.from_pretrained(model_name, use_fast=True)
+    image_processor = CustomImageProcessor.from_pretrained(model_name, use_fast=True)
     # Preprocessing
     image_preprocessor = ImagePreprocessor(dataset, image_processor)
 
@@ -200,7 +203,7 @@ def preprocess_kg_dataset(cloud_dataset_name, local_dataset_name, model_name):
     local_path = f"{path}/{local_dataset_name}"
     dataset = load_dataset("imagefolder", data_dir=local_path)
 
-    image_processor = AutoImageProcessor.from_pretrained(model_name, use_fast=True)
+    image_processor = CustomImageProcessor.from_pretrained(model_name, use_fast=True)
     # Preprocessing
     image_preprocessor = ImagePreprocessor(dataset, image_processor)
 
@@ -217,7 +220,7 @@ def preprocess_hf_ros_dataset(dataset_name, model_name):
     """
     dataset = load_dataset(dataset_name)
 
-    image_processor = AutoImageProcessor.from_pretrained(model_name, use_fast=True)
+    image_processor = CustomImageProcessor.from_pretrained(model_name, use_fast=True)
     # Preprocessing
     image_preprocessor = ImagePreprocessor(dataset, image_processor)
 
@@ -241,65 +244,47 @@ def preprocess_hf_ros_dataset(dataset_name, model_name):
 
     return train_ds, val_ds, test_ds
 
-# Image Preprocessor for data augmentation
+# Enhanced Image Preprocessor for data augmentation that works with CustomImageProcessor
 class ImagePreprocessor():
     def __init__(self, dataset, image_processor):
-        self.normalize = transforms.Normalize(
-            mean=image_processor.image_mean,
-            std=image_processor.image_std,
+        """
+        Initialize ImagePreprocessor with CustomImageProcessor.
+        
+        Args:
+            dataset: The dataset to be processed
+            image_processor: CustomImageProcessor instance
+        """
+        self.image_processor = image_processor
+        
+        # Get transforms from the custom image processor
+        self.train_transforms = image_processor.get_transform_for_training(
+            random_resize_crop=True,
+            horizontal_flip=True,
+            color_jitter=False
         )
-
-        if "height" in image_processor.size:
-            self.size = (
-                image_processor.size["height"],
-                image_processor.size["width"],
-            )
-            self.crop_size = self.size
-            self.max_size = None
-        elif "shortest_edge" in image_processor.size:
-            self.size = image_processor.size["shortest_edge"]
-            self.crop_size = (self.size, self.size)
-            self.max_size = image_processor.size.get("longest_edge")
-
-        self.train_transforms = transforms.Compose(
-            [
-                transforms.RandomResizedCrop(self.size),
-                transforms.RandomHorizontalFlip(),
-                transforms.ToTensor(),
-                self.normalize
-            ]
-        )
-        self.val_transforms = transforms.Compose(
-            [
-                transforms.Resize(self.size),
-                transforms.CenterCrop(self.size),
-                transforms.ToTensor(),
-                self.normalize
-            ]
-        )
-        self.test_transform = transforms.Compose([
-            transforms.Resize(self.size),
-            transforms.CenterCrop(self.crop_size),
-            transforms.ToTensor(),
-            self.normalize,
-        ])
+        
+        self.val_transforms = image_processor.get_transform_for_validation()
+        self.test_transforms = image_processor.get_transform_for_test()
 
     def preprocess_train(self, image_batch):
+        """Preprocess training images with data augmentation."""
         image_batch["pixel_values"] = [
             self.train_transforms(image.convert("RGB")) for image in image_batch["image"]
         ]
         return image_batch
     
     def preprocess_val(self, image_batch):
+        """Preprocess validation images."""
         image_batch["pixel_values"] = [
             self.val_transforms(image.convert("RGB")) for image in image_batch["image"]
         ]
         return image_batch
     
     def preprocess_test(self, image_batch):
+        """Preprocess test images."""
         image_batch["pixel_values"] = [
-            self.test_transform(image.convert("RGB")) for image in image_batch["image"]
-    ]
+            self.test_transforms(image.convert("RGB")) for image in image_batch["image"]
+        ]
         return image_batch
 
 def save_metrics_to_file(metrics, class_metrics, class_counts, output_dir, filename_suffix=""):
