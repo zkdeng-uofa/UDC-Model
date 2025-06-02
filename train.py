@@ -7,7 +7,7 @@ import seaborn as sns
 import numpy as np
 from pathlib import Path
 
-# Add the parent directory of 'models' to sys.path
+### Add the parent directory of 'models' to sys.path
 current_dir = os.path.dirname(os.path.abspath(__file__))
 parent_dir = os.path.abspath(os.path.join(current_dir, "../"))
 sys.path.insert(0, parent_dir)
@@ -20,15 +20,13 @@ from evaluate import load
 from transformers import (
     set_seed, 
     TrainingArguments, 
-    Trainer, 
-    AutoModelForImageClassification
+    Trainer
     )
 from transformers.utils import logging
 from PIL import Image
-from torchvision import transforms
 
-# Import from models
-from model.ResNetOld import ResNetConfig, ResNetForImageClassification
+### Import from models
+from model.ResNet import ResNetConfig, ResNetForImageClassification
 from utils.loss_functions import LossFunctions
 from utils.image_processor import CustomImageProcessor
 from utils.utils import (
@@ -48,14 +46,14 @@ class CustomTrainer(Trainer):
         self.loss_fxn = loss_fxn
 
     def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
-        # Unpack inputs dictionary and send to device
+        ### Unpack inputs dictionary and send to device
         pixel_values = inputs["pixel_values"].to(self.args.device)
         labels = inputs["labels"].to(self.args.device)
 
-        # Forward pass through the model
+        ### Forward pass through the model
         outputs = model(pixel_values)
 
-        # Compute loss
+        ### Compute loss
         logits = outputs.logits
         loss_fxn = self.lossClass.loss_function(self.loss_fxn)
 
@@ -81,7 +79,7 @@ class CustomTrainer(Trainer):
             loss = loss_fxn(logits, labels)
         return (loss, logits, labels)
 
-# Main function
+### Main function
 def main(script_args):
 
     if script_args.wandb == "True":
@@ -97,9 +95,8 @@ def main(script_args):
             "learning_rate": script_args.learning_rate,  # **Updated to use value from JSON**
             "num_train_epochs": script_args.num_train_epochs,  # **Updated to use value from JSON**
         })
-    #Load dataset
+    ### Load dataset
 
-    # Use our custom image processor instead of AutoImageProcessor
     image_processor = CustomImageProcessor.from_pretrained(script_args.model)
 
     if script_args.dataset_host == "huggingface":
@@ -110,13 +107,13 @@ def main(script_args):
             script_args.local_dataset_name,
             script_args.model
         )
-    # Pretrained weights
+    ### Pretrained weights
     print(script_args.weights)
     pretrained_weights_path = os.path.abspath(script_args.weights)
 
     pretrained_weights = torch.load(pretrained_weights_path, map_location="cpu")
 
-    # Device setup
+    ### Device setup
     if torch.backends.mps.is_available():
         device = torch.device("mps")
     elif torch.cuda.is_available():
@@ -127,7 +124,7 @@ def main(script_args):
     config = ResNetConfig(num_labels=script_args.num_labels, depths=[3, 4, 6, 3])
     model = ResNetForImageClassification(config)
 
-# Specify the model name or path from the Hugging Face Hub
+### Specify the model name or path from the Hugging Face Hub
 
     dataset = load_dataset(script_args.dataset)
 
@@ -146,14 +143,11 @@ def main(script_args):
     #     ignore_mismatched_sizes=True,
     # )
 
-
-    # (Optional) Load the corresponding image processor (e.g., for preprocessing input images)
-    #image_processor = AutoImageProcessor.from_pretrained(model_name)
     model = ResNetForImageClassification(config)
     model.to(device)
 
     #print(model)
-    # Load pretrained weights
+    ### Load pretrained weights
     filtered_weights = {k: v for k, v in pretrained_weights.items() if "classifier" not in k}
     #print(f"Filtered weights: {filtered_weights.keys()}")
     missing_keys, unexpected_keys = model.load_state_dict(filtered_weights, strict=False)
@@ -232,7 +226,7 @@ def main(script_args):
         cost_matrix=script_args.cost_matrix
     )
 
-    # Use the comprehensive evaluation function from utils
+    ### Use the comprehensive evaluation function from utils
     results_dir = perform_comprehensive_evaluation(
         trainer=trainer,
         test_ds=test_ds,
