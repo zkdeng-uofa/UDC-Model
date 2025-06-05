@@ -1,4 +1,5 @@
 import torch
+from typing import Literal
 
 class LossFunctions():
     def __init__(self, epsilon=1e-9, cost_matrix=None):
@@ -111,6 +112,73 @@ class LossFunctions():
         loss = loss * cost_values.mean()
         return loss
 
+    def CELogitAdjustment(self,
+        logits: torch.Tensor,
+        targets: torch.Tensor,
+        mode: Literal["standard", "positive", "negative"] = "negative"
+    ) -> torch.Tensor:
+        """
+        Computes the cross-entropy loss from scratch, with optional logit modifications
+        based on misclassification using cost matrix values.
+
+        Args:
+            logits (torch.Tensor): Logits predicted by the model (batch_size, num_classes).
+            targets (torch.Tensor): Ground truth labels (batch_size).
+            mode (str): One of ['standard', 'positive', 'negative'].
+                        'positive': boost correct class logit on misclassification.
+                        'negative': penalize correct class logit on misclassification.
+                        'standard': regular CE.
+
+        Returns:
+            torch.Tensor: Computed scalar loss value.
+        """
+        # Clone logits to avoid in-place ops
+        modified_logits = logits.clone()
+
+        batch_size, num_classes = logits.shape
+
+        # Get predicted class (argmax)
+        pred_classes = torch.argmax(modified_logits, dim=1)
+
+        # Gather predicted logits and target logits
+        max_logits = modified_logits[range(batch_size), pred_classes]
+        target_logits = modified_logits[range(batch_size), targets]
+
+        # Identify misclassified examples
+        misclassified = pred_classes != targets
+
+        # Compute difference where misclassified
+        diff = torch.abs(max_logits - target_logits)
+
+        # Get cost values from cost matrix based on true label (row) and predicted label (column)
+        # cost_matrix[true_label][predicted_label]
+        if self.cost_matrix is not None:
+            cost_values = self.cost_matrix[targets, pred_classes]  # Shape: (batch_size,)
+        else:
+            # Fallback to fixed values if cost matrix is not available
+            cost_values = torch.ones_like(targets, dtype=torch.float32)
+
+        print(f"cost_values: {cost_values}")
+        if mode == "positive":
+            # Apply correction: target_logit += cost_value * difference
+            corrected = target_logits + cost_values * diff
+        elif mode == "negative":
+            # Apply correction: target_logit -= cost_value * difference
+            corrected = target_logits - cost_values * diff
+        else:
+            corrected = target_logits  # no modification
+
+        # Replace only misclassified target logits
+        modified_logits[range(batch_size), targets] = torch.where(
+            misclassified, corrected, target_logits
+        )
+
+        # Compute softmax and cross-entropy
+        probs = torch.softmax(modified_logits, dim=-1)
+        target_probs = probs[range(batch_size), targets]
+        log_probs = -torch.log(target_probs + 1e-9)
+        return log_probs.mean()
+
     def CELossLTV1(self, output_logits: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
         """
         Computes the cross-entropy loss from scratch.
@@ -204,5 +272,7 @@ class LossFunctions():
             return self.seesaw_loss
         elif loss_name == "cost_matrix_cross_entropy":
             return self.CELossLTV1
+        elif loss_name == "test":
+            return self.CELogitAdjustment
         else:
             raise ValueError(f"Invalid loss function: {loss_name}")
