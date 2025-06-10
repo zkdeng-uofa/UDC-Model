@@ -36,6 +36,7 @@ from utils.utils import (
     parse_HF_args,
     preprocess_hf_dataset,
     preprocess_kg_dataset,
+    preprocess_local_folder_dataset,
     perform_comprehensive_evaluation
 )
 
@@ -99,6 +100,9 @@ def main(script_args):
 
     image_processor = CustomImageProcessor.from_pretrained(script_args.model)
 
+    # Initialize class_names variable
+    class_names = None
+    
     if script_args.dataset_host == "huggingface":
         train_ds, val_ds, test_ds = preprocess_hf_dataset(script_args.dataset, script_args.model)
     elif script_args.dataset_host == "kaggle":
@@ -107,6 +111,16 @@ def main(script_args):
             script_args.local_dataset_name,
             script_args.model
         )
+    elif script_args.dataset_host == "local_folder":
+        if script_args.local_folder_path is None:
+            raise ValueError("local_folder_path must be specified when dataset_host is 'local_folder'")
+        train_ds, val_ds, test_ds, class_names = preprocess_local_folder_dataset(
+            script_args.local_folder_path,
+            script_args.model
+        )
+    else:
+        raise ValueError(f"Unknown dataset_host: {script_args.dataset_host}")
+
     ### Pretrained weights
     print(script_args.weights)
     pretrained_weights_path = os.path.abspath(script_args.weights)
@@ -126,7 +140,7 @@ def main(script_args):
 
 ### Specify the model name or path from the Hugging Face Hub
 
-    dataset = load_dataset(script_args.dataset)
+    #dataset = load_dataset(script_args.dataset)
 
     # labels = dataset["train"].features["label"].names
     # label2id, id2label = dict(), dict()
@@ -231,7 +245,8 @@ def main(script_args):
         trainer=trainer,
         test_ds=test_ds,
         script_args=script_args,
-        dataset_name=script_args.dataset
+        dataset_name=script_args.dataset,
+        class_names=class_names
     )
     
     return results_dir

@@ -12,6 +12,8 @@ from transformers import HfArgumentParser
 from datasets import load_dataset
 from typing import List, Optional, Union
 from pathlib import Path
+from PIL import Image
+from sklearn.model_selection import train_test_split
 
 from collections import Counter
 from datasets import Dataset
@@ -169,6 +171,10 @@ class ScriptTrainingArguments:
         default=None,
         metadata={"help": "Name of local dataset"}
     )
+    local_folder_path: str = field(
+        default=None,
+        metadata={"help": "Path to local folder containing class subfolders with images"}
+    )
     loss_function: str = field(
         default="cross_entropy",
         metadata={"help": "Loss function to use"}
@@ -305,17 +311,34 @@ def save_metrics_to_file(metrics, class_metrics, class_counts, output_dir, filen
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     base_filename = f"metrics_{timestamp}{filename_suffix}"
     
+    def convert_numpy_types(obj):
+        """Convert numpy types to native Python types for JSON serialization."""
+        if isinstance(obj, np.integer):
+            return int(obj)
+        elif isinstance(obj, np.floating):
+            return float(obj)
+        elif isinstance(obj, np.ndarray):
+            return obj.tolist()
+        elif isinstance(obj, dict):
+            return {key: convert_numpy_types(value) for key, value in obj.items()}
+        elif isinstance(obj, list):
+            return [convert_numpy_types(item) for item in obj]
+        elif isinstance(obj, tuple):
+            return tuple(convert_numpy_types(item) for item in obj)
+        else:
+            return obj
+    
     # Prepare comprehensive metrics dictionary
     comprehensive_metrics = {
         "timestamp": timestamp,
         "overall_metrics": {
-            "accuracy": metrics.get("eval_accuracy", 0.0),
-            "f1_score": metrics.get("eval_f1", 0.0),
-            "loss": metrics.get("eval_loss", 0.0)
+            "accuracy": float(metrics.get("eval_accuracy", 0.0)),
+            "f1_score": float(metrics.get("eval_f1", 0.0)),
+            "loss": float(metrics.get("eval_loss", 0.0))
         },
-        "class_counts": class_counts,
-        "per_class_metrics": class_metrics,
-        "confusion_matrix": metrics.get("eval_confusion_matrix", {}).get("confusion_matrix", [])
+        "class_counts": convert_numpy_types(class_counts),
+        "per_class_metrics": convert_numpy_types(class_metrics),
+        "confusion_matrix": convert_numpy_types(metrics.get("eval_confusion_matrix", {}).get("confusion_matrix", []))
     }
     
     # Save as JSON
@@ -337,17 +360,18 @@ def save_metrics_to_file(metrics, class_metrics, class_counts, output_dir, filen
         
         f.write("CLASS SAMPLE COUNTS:\n")
         f.write("-" * 20 + "\n")
-        for class_id, count in sorted(class_counts.items()):
+        for class_id, count in sorted(comprehensive_metrics["class_counts"].items()):
             f.write(f"Class {class_id}: {count} samples\n")
         f.write("\n")
         
         f.write("PER-CLASS METRICS:\n")
         f.write("-" * 20 + "\n")
-        for class_id in sorted(class_metrics["accuracy"].keys()):
+        class_metrics_data = comprehensive_metrics["per_class_metrics"]
+        for class_id in sorted(class_metrics_data["accuracy"].keys()):
             f.write(f"Class {class_id}:\n")
-            f.write(f"  True Positive Rate (TPR): {class_metrics['accuracy'][class_id]:.4f}\n")
-            f.write(f"  False Positive Rate (FPR): {class_metrics['false_positive_rate'][class_id]:.4f}\n")
-            f.write(f"  False Negative Rate (FNR): {class_metrics['false_negative_rate'][class_id]:.4f}\n")
+            f.write(f"  True Positive Rate (TPR): {class_metrics_data['accuracy'][class_id]:.4f}\n")
+            f.write(f"  False Positive Rate (FPR): {class_metrics_data['false_positive_rate'][class_id]:.4f}\n")
+            f.write(f"  False Negative Rate (FNR): {class_metrics_data['false_negative_rate'][class_id]:.4f}\n")
             f.write("\n")
         
         f.write("CONFUSION MATRIX:\n")
@@ -362,7 +386,10 @@ def save_metrics_to_file(metrics, class_metrics, class_counts, output_dir, filen
 
 def create_confusion_matrix_visualization(confusion_matrix, class_names=None, output_dir="results", filename_suffix=""):
     """
-    Create a professional confusion matrix visualization.
+    Create a professional confusion matrix visualization with three views:
+    1. Raw counts
+    2. Recall (normalized by true class)
+    3. Precision (normalized by predicted class)
     
     Args:
         confusion_matrix: 2D array/list containing the confusion matrix
@@ -387,9 +414,9 @@ def create_confusion_matrix_visualization(confusion_matrix, class_names=None, ou
     # Create timestamp for unique filenames
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     
-    # Set up the matplotlib figure with professional styling
+    # Set up the matplotlib figure with professional styling for three subplots
     plt.style.use('default')
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(20, 8))
+    fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(30, 8))
     
     # Plot 1: Raw counts
     sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', 
@@ -401,16 +428,28 @@ def create_confusion_matrix_visualization(confusion_matrix, class_names=None, ou
     ax1.tick_params(axis='both', which='major', labelsize=12)
     
     # Plot 2: Normalized by true class (recall/sensitivity)
-    cm_normalized = cm.astype('float') / cm.sum(axis=1)[:, np.newaxis]
-    cm_normalized = np.nan_to_num(cm_normalized)  # Handle division by zero
+    cm_recall = cm.astype('float') / cm.sum(axis=1)[:, np.newaxis]
+    cm_recall = np.nan_to_num(cm_recall)  # Handle division by zero
     
-    sns.heatmap(cm_normalized, annot=True, fmt='.3f', cmap='Greens',
+    sns.heatmap(cm_recall, annot=True, fmt='.3f', cmap='Greens',
                 xticklabels=class_names, yticklabels=class_names,
                 ax=ax2, cbar_kws={'label': 'Recall (TPR)'})
-    ax2.set_title('Confusion Matrix - Normalized by True Class', fontsize=16, fontweight='bold', pad=20)
+    ax2.set_title('Confusion Matrix - Recall\n(Normalized by True Class)', fontsize=16, fontweight='bold', pad=20)
     ax2.set_xlabel('Predicted Label', fontsize=14, fontweight='bold')
     ax2.set_ylabel('True Label', fontsize=14, fontweight='bold')
     ax2.tick_params(axis='both', which='major', labelsize=12)
+    
+    # Plot 3: Normalized by predicted class (precision)
+    cm_precision = cm.astype('float') / cm.sum(axis=0)[np.newaxis, :]
+    cm_precision = np.nan_to_num(cm_precision)  # Handle division by zero
+    
+    sns.heatmap(cm_precision, annot=True, fmt='.3f', cmap='Oranges',
+                xticklabels=class_names, yticklabels=class_names,
+                ax=ax3, cbar_kws={'label': 'Precision (PPV)'})
+    ax3.set_title('Confusion Matrix - Precision\n(Normalized by Predicted Class)', fontsize=16, fontweight='bold', pad=20)
+    ax3.set_xlabel('Predicted Label', fontsize=14, fontweight='bold')
+    ax3.set_ylabel('True Label', fontsize=14, fontweight='bold')
+    ax3.tick_params(axis='both', which='major', labelsize=12)
     
     # Adjust layout and save
     plt.tight_layout(pad=3.0)
@@ -420,7 +459,7 @@ def create_confusion_matrix_visualization(confusion_matrix, class_names=None, ou
     plt.savefig(output_path, dpi=300, bbox_inches='tight', facecolor='white')
     plt.savefig(output_path.replace('.png', '.pdf'), bbox_inches='tight', facecolor='white')
     
-    print(f"Confusion matrix visualizations saved to: {output_path} and {output_path.replace('.png', '.pdf')}")
+    print(f"Confusion matrix visualizations (3-panel) saved to: {output_path} and {output_path.replace('.png', '.pdf')}")
     
     # Also create a separate detailed visualization
     create_detailed_confusion_matrix(cm, class_names, output_dir, filename_suffix, timestamp)
@@ -490,68 +529,64 @@ def create_detailed_confusion_matrix(cm, class_names, output_dir, filename_suffi
     print(f"Detailed confusion matrix saved to: {detailed_path}")
     return detailed_path
 
-def perform_comprehensive_evaluation(trainer, test_ds, script_args, dataset_name=None):
+def perform_comprehensive_evaluation(trainer, test_ds, script_args, dataset_name=None, class_names=None):
     """
-    Perform comprehensive evaluation including metrics computation, visualization, and file saving.
+    Perform comprehensive evaluation including confusion matrix, per-class metrics, and visualizations.
     
     Args:
         trainer: The trained model trainer
         test_ds: Test dataset
         script_args: Script arguments containing configuration
-        dataset_name: Name of the dataset (for class names lookup)
+        dataset_name: Name of the dataset (optional)
+        class_names: List of class names (optional, for local datasets)
     
     Returns:
         str: Path to the results directory
     """
-    # Evaluate the model
-    metrics = trainer.evaluate()
-    trainer.log_metrics("eval", metrics)
-
-    # Compute confusion matrix separately to avoid TensorBoard warnings
-    try:
-        metric_confusion = load("confusion_matrix")
-        
-        # Get predictions for confusion matrix
-        predictions = trainer.predict(test_ds)
-        predicted_labels = np.argmax(predictions.predictions, axis=-1)
-        true_labels = predictions.label_ids
-        
-        # Compute confusion matrix
-        confusion_result = metric_confusion.compute(predictions=predicted_labels, references=true_labels)
-        confusion_matrix = np.array(confusion_result["confusion_matrix"]).tolist()
-        
-        # Add confusion matrix to metrics for our processing
-        metrics["eval_confusion_matrix"] = {"confusion_matrix": confusion_matrix}
-        
-        print("Confusion matrix computed successfully (logged separately from scalar metrics)")
-        
-    except Exception as e:
-        print(f"Warning: Could not compute confusion matrix: {e}")
-        # Create a dummy confusion matrix if computation fails
-        num_classes = script_args.num_labels
-        confusion_matrix = [[0 for _ in range(num_classes)] for _ in range(num_classes)]
-        metrics["eval_confusion_matrix"] = {"confusion_matrix": confusion_matrix}
-
-    # Create results directory
-    results_dir = os.path.join("results", script_args.output_dir)
-    Path(results_dir).mkdir(parents=True, exist_ok=True)
-
-    # Calculate class counts
-    class_counts = {}
-    for sample in test_ds:
-        label = sample["label"]
-        if label not in class_counts:
-            class_counts[label] = 0
-        class_counts[label] += 1
-
-    # Use the confusion matrix computed separately above
-    num_classes = len(confusion_matrix)
+    print("\n" + "="*60)
+    print("PERFORMING COMPREHENSIVE EVALUATION")
+    print("="*60)
     
-    # Total samples per class (from confusion matrix rows)
-    total_samples_per_class = [sum(row) for row in confusion_matrix]
-    total_samples = sum(total_samples_per_class)
-
-    # Calculate detailed per-class metrics
+    # Create results directory with timestamp
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    results_dir = f"results/{script_args.output_dir}_{timestamp}"
+    Path(results_dir).mkdir(parents=True, exist_ok=True)
+    
+    print(f"Results will be saved to: {results_dir}")
+    
+    # Perform evaluation
+    print("Running model evaluation...")
+    metrics = trainer.evaluate()
+    
+    # Get confusion matrix
+    print("Computing detailed metrics...")
+    metric_confusion = load("confusion_matrix")
+    
+    # Get predictions
+    predictions = trainer.predict(test_ds)
+    y_pred = np.argmax(predictions.predictions, axis=-1)
+    y_true = predictions.label_ids
+    
+    # Compute confusion matrix
+    confusion_result = metric_confusion.compute(predictions=y_pred, references=y_true)
+    confusion_matrix = confusion_result["confusion_matrix"]
+    
+    # Add confusion matrix to metrics
+    metrics["eval_confusion_matrix"] = confusion_result
+    
+    # Calculate per-class metrics
+    num_classes = len(confusion_matrix)
+    total_samples = np.sum(confusion_matrix)
+    
+    # Count samples per class
+    class_counts = {}
+    total_samples_per_class = {}
+    for i in range(num_classes):
+        class_total = sum(confusion_matrix[i])
+        class_counts[i] = class_total
+        total_samples_per_class[i] = class_total
+    
+    # Initialize per-class metrics dictionary
     class_metrics = {
         "accuracy": {},
         "false_positive_rate": {},
@@ -593,23 +628,29 @@ def perform_comprehensive_evaluation(trainer, test_ds, script_args, dataset_name
     # Create professional confusion matrix visualizations
     print("Creating confusion matrix visualizations...")
     
-    # Try to get class names from dataset if available
-    class_names = None
-    try:
-        if dataset_name:
-            dataset = load_dataset(dataset_name)
-            if hasattr(dataset["train"].features["label"], "names"):
-                class_names = dataset["train"].features["label"].names
+    # Use provided class names or try to get from dataset, or fall back to generic names
+    if class_names is not None:
+        # Use provided class names (from local folder dataset)
+        final_class_names = class_names
+        print(f"Using provided class names: {final_class_names}")
+    else:
+        # Try to get class names from dataset if available
+        try:
+            if dataset_name:
+                dataset = load_dataset(dataset_name)
+                if hasattr(dataset["train"].features["label"], "names"):
+                    final_class_names = dataset["train"].features["label"].names
+                else:
+                    final_class_names = [f"Class {i}" for i in range(num_classes)]
             else:
-                class_names = [f"Class {i}" for i in range(num_classes)]
-        else:
-            class_names = [f"Class {i}" for i in range(num_classes)]
-    except:
-        class_names = [f"Class {i}" for i in range(num_classes)]
+                final_class_names = [f"Class {i}" for i in range(num_classes)]
+        except:
+            final_class_names = [f"Class {i}" for i in range(num_classes)]
+        print(f"Using class names: {final_class_names}")
     
     create_confusion_matrix_visualization(
         confusion_matrix, 
-        class_names=class_names, 
+        class_names=final_class_names, 
         output_dir=results_dir, 
         filename_suffix=f"_{script_args.loss_function}"
     )
@@ -623,7 +664,138 @@ def perform_comprehensive_evaluation(trainer, test_ds, script_args, dataset_name
     print(f"Overall F1 Score: {metrics.get('eval_f1', 0.0):.4f}")
     print(f"Loss Function Used: {script_args.loss_function}")
     print(f"Total Test Samples: {total_samples}")
+    if class_names:
+        print(f"Classes: {', '.join(final_class_names)}")
     print(f"\nDetailed metrics and visualizations saved to: {results_dir}")
     print(f"{'='*60}")
     
-    return results_dir 
+    return results_dir
+
+def preprocess_local_folder_dataset(folder_path, model_name, test_size=0.1, val_size=0.1, random_state=42):
+    """
+    Load images from a local folder structure where subfolders represent classes.
+    
+    Args:
+        folder_path (str): Path to the root folder containing class subfolders
+        model_name (str): Model name for the image processor
+        test_size (float): Proportion of data to use for testing (default: 0.1)
+        val_size (float): Proportion of remaining data to use for validation (default: 0.1)
+        random_state (int): Random seed for reproducible splits
+    
+    Returns:
+        tuple: (train_ds, val_ds, test_ds, class_names) - preprocessed datasets and class names
+    """
+    print(f"Loading dataset from: {folder_path}")
+    
+    # Check if path exists
+    if not os.path.exists(folder_path):
+        raise ValueError(f"Dataset path does not exist: {folder_path}")
+    
+    # Get all class folders (subdirectories)
+    class_folders = [d for d in os.listdir(folder_path) 
+                    if os.path.isdir(os.path.join(folder_path, d)) and not d.startswith('.')]
+    class_folders.sort()  # Ensure consistent ordering
+    
+    if not class_folders:
+        raise ValueError(f"No class folders found in {folder_path}")
+    
+    print(f"Found {len(class_folders)} classes: {class_folders}")
+    
+    # Create class to index mapping
+    class_to_idx = {cls_name: idx for idx, cls_name in enumerate(class_folders)}
+    idx_to_class = {idx: cls_name for cls_name, idx in class_to_idx.items()}
+    
+    # Load all images and labels
+    image_paths = []
+    labels = []
+    
+    # Supported image extensions
+    image_extensions = {'.jpg', '.jpeg', '.png', '.bmp', '.tiff', '.tif'}
+    
+    for class_name in class_folders:
+        class_folder = os.path.join(folder_path, class_name)
+        class_idx = class_to_idx[class_name]
+        
+        # Get all image files in this class folder
+        class_images = []
+        for file in os.listdir(class_folder):
+            if any(file.lower().endswith(ext) for ext in image_extensions):
+                image_path = os.path.join(class_folder, file)
+                class_images.append(image_path)
+        
+        print(f"Class '{class_name}' (index {class_idx}): {len(class_images)} images")
+        
+        image_paths.extend(class_images)
+        labels.extend([class_idx] * len(class_images))
+    
+    print(f"Total images loaded: {len(image_paths)}")
+    
+    # Split the data: first split into train+val and test
+    X_train_val, X_test, y_train_val, y_test = train_test_split(
+        image_paths, labels, test_size=test_size, random_state=random_state, stratify=labels
+    )
+    
+    # Then split train+val into train and val
+    X_train, X_val, y_train, y_val = train_test_split(
+        X_train_val, y_train_val, test_size=val_size, random_state=random_state, stratify=y_train_val
+    )
+    
+    print(f"Data split: Train={len(X_train)}, Val={len(X_val)}, Test={len(X_test)}")
+    
+    # Create datasets
+    def create_dataset_dict(image_paths, labels):
+        """Create a dictionary compatible with HuggingFace datasets"""
+        dataset_dict = {
+            'image': [],
+            'label': labels
+        }
+        
+        # Load images
+        for img_path in image_paths:
+            try:
+                image = Image.open(img_path).convert('RGB')
+                dataset_dict['image'].append(image)
+            except Exception as e:
+                print(f"Warning: Could not load image {img_path}: {e}")
+                # Skip this image and corresponding label
+                continue
+        
+        return dataset_dict
+    
+    # Create dataset dictionaries
+    train_dict = create_dataset_dict(X_train, y_train)
+    val_dict = create_dataset_dict(X_val, y_val)
+    test_dict = create_dataset_dict(X_test, y_test)
+    
+    # Convert to HuggingFace Dataset objects
+    train_dataset = Dataset.from_dict(train_dict)
+    val_dataset = Dataset.from_dict(val_dict)
+    test_dataset = Dataset.from_dict(test_dict)
+    
+    # Set up image processor and preprocessing
+    image_processor = CustomImageProcessor.from_pretrained(model_name, use_fast=True)
+    
+    # Create a dummy dataset object for ImagePreprocessor (it expects a dataset with some structure)
+    class DummyDataset:
+        def __init__(self):
+            pass
+    
+    dummy_dataset = DummyDataset()
+    image_preprocessor = ImagePreprocessor(dummy_dataset, image_processor)
+    
+    # Apply transforms
+    train_dataset.set_transform(image_preprocessor.preprocess_train)
+    val_dataset.set_transform(image_preprocessor.preprocess_val)
+    test_dataset.set_transform(image_preprocessor.preprocess_test)
+    
+    # Print dataset info
+    print(f"Dataset created successfully!")
+    print(f"Class mapping: {idx_to_class}")
+    print(f"Train samples: {len(train_dataset)}")
+    print(f"Validation samples: {len(val_dataset)}")
+    print(f"Test samples: {len(test_dataset)}")
+    
+    # Return class names as a list in the correct order (index -> class_name)
+    class_names = [idx_to_class[i] for i in range(len(class_folders))]
+    
+    return train_dataset, val_dataset, test_dataset, class_names 
