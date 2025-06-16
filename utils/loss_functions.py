@@ -223,6 +223,7 @@ class LossFunctions():
         # Apply correction: max_logit += cost_value * difference
         # This penalizes the incorrectly predicted class by increasing its logit further,
         # making it even more confident in the wrong prediction, which should increase the loss
+        #print(f"cost_values: {cost_values}")
         corrected_max_logits = max_logits + cost_values * diff
 
         # Replace only misclassified predicted class logits (not target logits)
