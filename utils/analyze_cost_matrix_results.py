@@ -24,7 +24,7 @@ sns.set_palette("husl")
 
 def load_sweep_config():
     """Load the sweep configuration to get matrix cell info."""
-    config_files = ["sweep_config.json", "sweep_config_examples/quick_test.json"]
+    config_files = ["config/sweep_config.json", "config/quick_test.json"]
     
     for config_file in config_files:
         if os.path.exists(config_file):
@@ -326,11 +326,16 @@ def create_summary_statistics(df, output_dir, target_class, matrix_row, matrix_c
         
         f.write("CORRELATION ANALYSIS:\n")
         f.write("-" * 30 + "\n")
-        # Calculate correlations with cost matrix value
-        correlations = df.corr()['cost_matrix_value'].sort_values(key=abs, ascending=False)
-        for metric, correlation in correlations.items():
-            if metric != 'cost_matrix_value':
-                f.write(f"{metric}: {correlation:.4f}\n")
+        # Calculate correlations with cost matrix value (only numeric columns)
+        numeric_df = df.select_dtypes(include=[np.number])
+        if 'cost_matrix_value' in numeric_df.columns and len(numeric_df.columns) > 1:
+            correlations = numeric_df.corr()['cost_matrix_value'].sort_values(key=abs, ascending=False)
+            f.write("Correlations with cost matrix value:\n")
+            for metric, correlation in correlations.items():
+                if metric != 'cost_matrix_value' and not np.isnan(correlation):
+                    f.write(f"  {metric}: {correlation:.4f}\n")
+        else:
+            f.write("No numeric data available for correlation analysis.\n")
     
     print(f"Summary report saved to: {summary_file}")
 

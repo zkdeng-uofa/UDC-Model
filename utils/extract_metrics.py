@@ -16,7 +16,7 @@ from pathlib import Path
 
 def load_sweep_config():
     """Load the sweep configuration to get matrix cell info."""
-    config_files = ["sweep_config.json", "sweep_config_examples/quick_test.json"]
+    config_files = ["config/sweep_config.json", "config/quick_test.json"]
     
     for config_file in config_files:
         if os.path.exists(config_file):

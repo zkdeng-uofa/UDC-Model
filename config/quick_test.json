@@ -10,7 +10,7 @@
         "description": "Quick test - Matrix cell [1,2] with only 3 values"
     },
     "experiment": {
-        "output_dir": "quick_test_results",
+        "output_dir": "results/quick_test_results",
         "base_config": "config/localDatasetConfig.json",
         "description": "Quick test sweep - varying cell [1,2] from 0.0 to 1.0"
     },

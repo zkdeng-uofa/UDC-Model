@@ -7,7 +7,7 @@
 set -e  # Exit on any error
 
 # Default sweep configuration file
-SWEEP_CONFIG_FILE="sweep_config.json"
+SWEEP_CONFIG_FILE="config/sweep_config.json"
 
 # Check if custom config file is provided
 if [[ $# -eq 1 ]]; then
@@ -54,6 +54,7 @@ eval $(read_config)
 
 # Derived configuration
 BACKUP_CONFIG="${CONFIG_FILE}_backup.json"
+# Use the output directory as specified in config (should include results/ if desired)
 METRICS_CSV="$RESULTS_DIR/metrics_summary.csv"
 LOGS_DIR="$RESULTS_DIR/logs"
 
@@ -111,8 +112,8 @@ extract_metrics() {
     
     echo "Extracting metrics from: $results_dir"
     
-    # Use the separate Python script to extract metrics
-    if python3 extract_metrics.py "$results_dir" "$cost_value" --output "$METRICS_CSV"; then
+    # Use the separate Python script to extract metrics (now in utils/)
+    if python3 utils/extract_metrics.py "$results_dir" "$cost_value" --output "$METRICS_CSV"; then
         return 0
     else
         echo "WARNING: Failed to extract metrics for cost value $cost_value"
@@ -167,7 +168,7 @@ for cost_value in "${cost_values[@]}"; do
             # Update graphs if configured
             if [[ "$UPDATE_GRAPHS" == "true" ]]; then
                 echo "Updating analysis graphs..."
-                if python3 analyze_cost_matrix_results.py "$RESULTS_DIR"; then
+                if python3 utils/analyze_cost_matrix_results.py "$RESULTS_DIR"; then
                     echo "Graphs updated successfully."
                 else
                     echo "WARNING: Failed to update graphs"
@@ -194,7 +195,7 @@ cp "$BACKUP_CONFIG" "$CONFIG_FILE"
 
 if [[ "$GENERATE_FINAL" == "true" ]]; then
     echo "Generating final analysis and summary..."
-    python3 analyze_cost_matrix_results.py "$RESULTS_DIR" --final
+    python3 utils/analyze_cost_matrix_results.py "$RESULTS_DIR" --final
 else
     echo "Skipping final analysis (configured to false)"
 fi

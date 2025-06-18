@@ -549,7 +549,7 @@ def perform_comprehensive_evaluation(trainer, test_ds, script_args, dataset_name
     
     # Create results directory with timestamp
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    results_dir = f"results/{script_args.output_dir}_{timestamp}"
+    results_dir = f"results/resnet_test/{script_args.output_dir}_{timestamp}"
     Path(results_dir).mkdir(parents=True, exist_ok=True)
     
     print(f"Results will be saved to: {results_dir}")
