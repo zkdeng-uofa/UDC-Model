@@ -183,6 +183,22 @@ class ScriptTrainingArguments:
         default=None,
         metadata={"help": "Cost matrix for cost-sensitive loss functions (JSON string)"}
     )
+    sweep_mode: bool = field(
+        default=False,
+        metadata={"help": "Whether we are running in cost matrix sweep mode"}
+    )
+    sweep_cost_value: float = field(
+        default=None,
+        metadata={"help": "Current cost value being swept (only used in sweep mode)"}
+    )
+    sweep_matrix_row: int = field(
+        default=None,
+        metadata={"help": "Row index of cost matrix cell being swept (only used in sweep mode)"}
+    )
+    sweep_matrix_col: int = field(
+        default=None,
+        metadata={"help": "Column index of cost matrix cell being swept (only used in sweep mode)"}
+    )
 
 def preprocess_hf_dataset(dataset_name, model_name):
     """
@@ -548,8 +564,20 @@ def perform_comprehensive_evaluation(trainer, test_ds, script_args, dataset_name
     print("="*60)
     
     # Create results directory with timestamp
-    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    results_dir = f"results/resnet_test/{script_args.output_dir}_{timestamp}"
+    now = datetime.datetime.now()
+    date_str = now.strftime("%m-%d")  # Format: MM-DD
+    time_str = now.strftime("%H-%M")  # Format: HH-MM
+    
+    # Build directory name based on sweep mode
+    if script_args.sweep_mode and script_args.sweep_cost_value is not None:
+        # Sweep mode: {output_dir}__modifier{cost_value}_true{row}_predict{col}_{date}_{time}
+        cost_str = str(script_args.sweep_cost_value)  # Keep decimal point as specified
+        dir_name = f"{script_args.output_dir}__modifier{cost_str}_true{script_args.sweep_matrix_row}_predict{script_args.sweep_matrix_col}_{date_str}_{time_str}"
+    else:
+        # Normal mode: {output_dir}_{date}_{time}
+        dir_name = f"{script_args.output_dir}_{date_str}_{time_str}"
+    
+    results_dir = f"results/resnet_test/{dir_name}"
     Path(results_dir).mkdir(parents=True, exist_ok=True)
     
     print(f"Results will be saved to: {results_dir}")

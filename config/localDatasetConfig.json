@@ -1,23 +1,18 @@
 {
     "dataset": "local_black_widows",
     "dataset_host": "local_folder",
-    "local_folder_path": "/Users/zideng/Work/LDAWT/examples/black_widows_6_17",
+    "local_folder_path": "/Users/zideng/Work/LDAWT/examples/black_widows_6_18",
     "model": "microsoft/resnet-50",
     "weights": "weights/pytorch_model.bin",
     "learning_rate": 0.0005,
     "num_train_epochs": 3,
     "batch_size": 16,
-    "num_labels": 3,
+    "num_labels": 2,
     "wandb": "False",
     "push_to_hub": "False",
-    "output_dir": "test_resnet_local_dataset",
+    "output_dir": "resnet_run",
     "loss_function": "test",
     "cost_matrix": [
-        [
-            0.0,
-            0.0,
-            0.0
-        ],
         [
             0.0,
             0.0,

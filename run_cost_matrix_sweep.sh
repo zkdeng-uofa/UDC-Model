@@ -97,11 +97,17 @@ with open('$CONFIG_FILE', 'r') as f:
 # Update the specific cell using the configured row and column
 config['cost_matrix'][$MATRIX_ROW][$MATRIX_COL] = float($cost_value)
 
+# Add sweep mode parameters
+config['sweep_mode'] = True
+config['sweep_cost_value'] = float($cost_value)
+config['sweep_matrix_row'] = $MATRIX_ROW
+config['sweep_matrix_col'] = $MATRIX_COL
+
 # Write back to file
 with open('$CONFIG_FILE', 'w') as f:
     json.dump(config, f, indent=4)
 
-print(f'Updated cost_matrix[$MATRIX_ROW][$MATRIX_COL] to {$cost_value}')
+print(f'Updated cost_matrix[$MATRIX_ROW][$MATRIX_COL] to {$cost_value} with sweep mode enabled')
 "
 }
 
@@ -192,6 +198,27 @@ echo "EXPERIMENT COMPLETED"
 echo "=========================================="
 echo "Restoring original configuration..."
 cp "$BACKUP_CONFIG" "$CONFIG_FILE"
+
+# Clean up any sweep mode parameters from the backup (in case they existed)
+python3 -c "
+import json
+
+# Read the restored JSON file
+with open('$CONFIG_FILE', 'r') as f:
+    config = json.load(f)
+
+# Remove sweep mode parameters if they exist
+config.pop('sweep_mode', None)
+config.pop('sweep_cost_value', None)
+config.pop('sweep_matrix_row', None)
+config.pop('sweep_matrix_col', None)
+
+# Write back to file
+with open('$CONFIG_FILE', 'w') as f:
+    json.dump(config, f, indent=4)
+
+print('Original configuration restored and cleaned of sweep parameters')
+"
 
 if [[ "$GENERATE_FINAL" == "true" ]]; then
     echo "Generating final analysis and summary..."
