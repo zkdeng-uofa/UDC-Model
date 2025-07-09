@@ -66,11 +66,9 @@ mkdir -p "$LOGS_DIR"
 echo "Backing up original config..."
 cp "$CONFIG_FILE" "$BACKUP_CONFIG"
 
-# Initialize CSV file with headers
-echo "Creating metrics CSV file..."
-cat > "$METRICS_CSV" << EOF
-cost_matrix_value,overall_accuracy,overall_precision,overall_recall,overall_f1,class1_accuracy,class1_precision,class1_recall,confusion_1_2_raw,confusion_1_2_precision,confusion_1_2_recall,results_dir,timestamp
-EOF
+# Initialize CSV file with dynamic headers based on matrix cell
+echo "Creating metrics CSV file with dynamic headers..."
+python3 utils/extract_metrics.py --print-header --sweep-config "$SWEEP_CONFIG_FILE" dummy_dir 0 > "$METRICS_CSV"
 
 echo "=========================================="
 echo "STARTING COST MATRIX SWEEP EXPERIMENT"
@@ -119,7 +117,7 @@ extract_metrics() {
     echo "Extracting metrics from: $results_dir"
     
     # Use the separate Python script to extract metrics (now in utils/)
-    if python3 utils/extract_metrics.py "$results_dir" "$cost_value" --output "$METRICS_CSV"; then
+    if python3 utils/extract_metrics.py "$results_dir" "$cost_value" --output "$METRICS_CSV" --sweep-config "$SWEEP_CONFIG_FILE"; then
         return 0
     else
         echo "WARNING: Failed to extract metrics for cost value $cost_value"
@@ -174,7 +172,7 @@ for cost_value in "${cost_values[@]}"; do
             # Update graphs if configured
             if [[ "$UPDATE_GRAPHS" == "true" ]]; then
                 echo "Updating analysis graphs..."
-                if python3 utils/analyze_cost_matrix_results.py "$RESULTS_DIR"; then
+                if python3 utils/analyze_cost_matrix_results.py "$RESULTS_DIR" --sweep-config "$SWEEP_CONFIG_FILE"; then
                     echo "Graphs updated successfully."
                 else
                     echo "WARNING: Failed to update graphs"
@@ -222,7 +220,7 @@ print('Original configuration restored and cleaned of sweep parameters')
 
 if [[ "$GENERATE_FINAL" == "true" ]]; then
     echo "Generating final analysis and summary..."
-    python3 utils/analyze_cost_matrix_results.py "$RESULTS_DIR" --final
+    python3 utils/analyze_cost_matrix_results.py "$RESULTS_DIR" --final --sweep-config "$SWEEP_CONFIG_FILE"
 else
     echo "Skipping final analysis (configured to false)"
 fi

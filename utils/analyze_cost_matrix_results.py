@@ -22,15 +22,22 @@ warnings.filterwarnings('ignore')
 plt.style.use('default')
 sns.set_palette("husl")
 
-def load_sweep_config():
+def load_sweep_config(sweep_config_file=None):
     """Load the sweep configuration to get matrix cell info."""
-    config_files = ["config/sweep_config.json", "config/quick_test.json"]
+    # If a specific config file is provided, use it first
+    config_files = []
+    if sweep_config_file:
+        config_files.append(sweep_config_file)
+    
+    # Add fallback config files
+    config_files.extend(["config/sweep_config.json", "config/quick_test.json"])
     
     for config_file in config_files:
         if os.path.exists(config_file):
             try:
                 with open(config_file, 'r') as f:
                     config = json.load(f)
+                    print(f"Successfully loaded sweep config from: {config_file}")
                     return config
             except Exception as e:
                 print(f"WARNING: Could not load {config_file}: {e}")
@@ -43,7 +50,15 @@ def load_sweep_config():
         "experiment": {"description": "Cost matrix sweep"}
     }
 
-def load_metrics_data(results_dir):
+def get_dynamic_column_names(matrix_row, matrix_col):
+    """Get the dynamic column names based on matrix cell."""
+    return {
+        'confusion_raw': f'confusion_{matrix_row}_{matrix_col}_raw',
+        'confusion_precision': f'confusion_{matrix_row}_{matrix_col}_precision',
+        'confusion_recall': f'confusion_{matrix_row}_{matrix_col}_recall'
+    }
+
+def load_metrics_data(results_dir, matrix_row, matrix_col):
     """Load the metrics CSV file and return a pandas DataFrame."""
     metrics_file = os.path.join(results_dir, "metrics_summary.csv")
     
@@ -54,12 +69,27 @@ def load_metrics_data(results_dir):
     try:
         df = pd.read_csv(metrics_file)
         print(f"Loaded {len(df)} data points from {metrics_file}")
+        
+        # Get dynamic column names
+        col_names = get_dynamic_column_names(matrix_row, matrix_col)
+        
+        # Check if the expected columns exist
+        expected_columns = [col_names['confusion_raw'], col_names['confusion_precision'], col_names['confusion_recall']]
+        missing_columns = [col for col in expected_columns if col not in df.columns]
+        
+        if missing_columns:
+            print(f"WARNING: Missing columns in CSV: {missing_columns}")
+            print(f"Available columns: {list(df.columns)}")
+            # Add missing columns with default values
+            for col in missing_columns:
+                df[col] = 0
+        
         return df
     except Exception as e:
         print(f"ERROR loading metrics file: {e}")
         return None
 
-def create_overall_metrics_plot(df, output_dir):
+def create_overall_metrics_plot(df, output_dir, matrix_row, matrix_col):
     """Create plots for overall performance metrics."""
     fig, axes = plt.subplots(2, 2, figsize=(15, 12))
     fig.suptitle('Overall Performance Metrics vs Cost Matrix Value', fontsize=16, fontweight='bold')
@@ -67,7 +97,7 @@ def create_overall_metrics_plot(df, output_dir):
     # Overall Accuracy
     axes[0,0].plot(df['cost_matrix_value'], df['overall_accuracy'], 'b-o', linewidth=2, markersize=6)
     axes[0,0].set_title('Overall Accuracy', fontweight='bold')
-    axes[0,0].set_xlabel('Cost Matrix Value [1,2]')
+    axes[0,0].set_xlabel(f'Cost Matrix Value [{matrix_row},{matrix_col}]')
     axes[0,0].set_ylabel('Accuracy')
     axes[0,0].grid(True, alpha=0.3)
     axes[0,0].set_ylim([0, 1])
@@ -75,7 +105,7 @@ def create_overall_metrics_plot(df, output_dir):
     # Overall Precision
     axes[0,1].plot(df['cost_matrix_value'], df['overall_precision'], 'g-o', linewidth=2, markersize=6)
     axes[0,1].set_title('Overall Precision', fontweight='bold')
-    axes[0,1].set_xlabel('Cost Matrix Value [1,2]')
+    axes[0,1].set_xlabel(f'Cost Matrix Value [{matrix_row},{matrix_col}]')
     axes[0,1].set_ylabel('Precision')
     axes[0,1].grid(True, alpha=0.3)
     axes[0,1].set_ylim([0, 1])
@@ -83,7 +113,7 @@ def create_overall_metrics_plot(df, output_dir):
     # Overall Recall
     axes[1,0].plot(df['cost_matrix_value'], df['overall_recall'], 'r-o', linewidth=2, markersize=6)
     axes[1,0].set_title('Overall Recall', fontweight='bold')
-    axes[1,0].set_xlabel('Cost Matrix Value [1,2]')
+    axes[1,0].set_xlabel(f'Cost Matrix Value [{matrix_row},{matrix_col}]')
     axes[1,0].set_ylabel('Recall')
     axes[1,0].grid(True, alpha=0.3)
     axes[1,0].set_ylim([0, 1])
@@ -91,7 +121,7 @@ def create_overall_metrics_plot(df, output_dir):
     # Overall F1 Score
     axes[1,1].plot(df['cost_matrix_value'], df['overall_f1'], 'm-o', linewidth=2, markersize=6)
     axes[1,1].set_title('Overall F1 Score', fontweight='bold')
-    axes[1,1].set_xlabel('Cost Matrix Value [1,2]')
+    axes[1,1].set_xlabel(f'Cost Matrix Value [{matrix_row},{matrix_col}]')
     axes[1,1].set_ylabel('F1 Score')
     axes[1,1].grid(True, alpha=0.3)
     axes[1,1].set_ylim([0, 1])
@@ -147,18 +177,20 @@ def create_target_class_metrics_plot(df, output_dir, target_class, matrix_row, m
 
 def create_confusion_cell_plot(df, output_dir, matrix_row, matrix_col):
     """Create plots for confusion matrix cell metrics."""
+    col_names = get_dynamic_column_names(matrix_row, matrix_col)
+    
     fig, axes = plt.subplots(1, 3, figsize=(18, 6))
     fig.suptitle(f'Confusion Matrix Cell [{matrix_row},{matrix_col}] Metrics vs Cost Matrix Value', fontsize=16, fontweight='bold')
     
     # Raw Count
-    axes[0].plot(df['cost_matrix_value'], df['confusion_1_2_raw'], 'orange', marker='o', linewidth=2, markersize=6)
+    axes[0].plot(df['cost_matrix_value'], df[col_names['confusion_raw']], 'orange', marker='o', linewidth=2, markersize=6)
     axes[0].set_title(f'Raw Count in Cell [{matrix_row},{matrix_col}]', fontweight='bold')
     axes[0].set_xlabel(f'Cost Matrix Value [{matrix_row},{matrix_col}]')
     axes[0].set_ylabel('Raw Count')
     axes[0].grid(True, alpha=0.3)
     
     # Precision Value
-    axes[1].plot(df['cost_matrix_value'], df['confusion_1_2_precision'], 'purple', marker='o', linewidth=2, markersize=6)
+    axes[1].plot(df['cost_matrix_value'], df[col_names['confusion_precision']], 'purple', marker='o', linewidth=2, markersize=6)
     axes[1].set_title(f'Precision Value in Cell [{matrix_row},{matrix_col}]', fontweight='bold')
     axes[1].set_xlabel(f'Cost Matrix Value [{matrix_row},{matrix_col}]')
     axes[1].set_ylabel('Precision Value')
@@ -166,7 +198,7 @@ def create_confusion_cell_plot(df, output_dir, matrix_row, matrix_col):
     axes[1].set_ylim([0, 1])
     
     # Recall Value
-    axes[2].plot(df['cost_matrix_value'], df['confusion_1_2_recall'], 'brown', marker='o', linewidth=2, markersize=6)
+    axes[2].plot(df['cost_matrix_value'], df[col_names['confusion_recall']], 'brown', marker='o', linewidth=2, markersize=6)
     axes[2].set_title(f'Recall Value in Cell [{matrix_row},{matrix_col}]', fontweight='bold')
     axes[2].set_xlabel(f'Cost Matrix Value [{matrix_row},{matrix_col}]')
     axes[2].set_ylabel('Recall Value')
@@ -185,6 +217,8 @@ def create_confusion_cell_plot(df, output_dir, matrix_row, matrix_col):
 
 def create_comprehensive_dashboard(df, output_dir, target_class, matrix_row, matrix_col):
     """Create a comprehensive dashboard with all metrics."""
+    col_names = get_dynamic_column_names(matrix_row, matrix_col)
+    
     fig = plt.figure(figsize=(20, 16))
     gs = fig.add_gridspec(4, 3, hspace=0.3, wspace=0.3)
     
@@ -243,13 +277,13 @@ def create_comprehensive_dashboard(df, output_dir, target_class, matrix_row, mat
     ax7.set_ylim([0, 1])
     
     ax8 = fig.add_subplot(gs[2, 1])
-    ax8.plot(df['cost_matrix_value'], df['confusion_1_2_raw'], 'brown', marker='o', linewidth=2, markersize=4)
+    ax8.plot(df['cost_matrix_value'], df[col_names['confusion_raw']], 'brown', marker='o', linewidth=2, markersize=4)
     ax8.set_title(f'Raw Count Cell [{matrix_row},{matrix_col}]', fontweight='bold')
     ax8.set_ylabel('Raw Count')
     ax8.grid(True, alpha=0.3)
     
     ax9 = fig.add_subplot(gs[2, 2])
-    ax9.plot(df['cost_matrix_value'], df['confusion_1_2_precision'], 'pink', marker='o', linewidth=2, markersize=4)
+    ax9.plot(df['cost_matrix_value'], df[col_names['confusion_precision']], 'pink', marker='o', linewidth=2, markersize=4)
     ax9.set_title(f'Precision Cell [{matrix_row},{matrix_col}]', fontweight='bold')
     ax9.set_ylabel('Precision Value')
     ax9.grid(True, alpha=0.3)
@@ -257,7 +291,7 @@ def create_comprehensive_dashboard(df, output_dir, target_class, matrix_row, mat
     
     # Row 4: Recall Cell and Combined Analysis
     ax10 = fig.add_subplot(gs[3, 0])
-    ax10.plot(df['cost_matrix_value'], df['confusion_1_2_recall'], 'navy', marker='o', linewidth=2, markersize=4)
+    ax10.plot(df['cost_matrix_value'], df[col_names['confusion_recall']], 'navy', marker='o', linewidth=2, markersize=4)
     ax10.set_title(f'Recall Cell [{matrix_row},{matrix_col}]', fontweight='bold')
     ax10.set_xlabel(f'Cost Matrix Value [{matrix_row},{matrix_col}]')
     ax10.set_ylabel('Recall Value')
@@ -287,6 +321,8 @@ def create_comprehensive_dashboard(df, output_dir, target_class, matrix_row, mat
 
 def create_summary_statistics(df, output_dir, target_class, matrix_row, matrix_col):
     """Create and save summary statistics."""
+    col_names = get_dynamic_column_names(matrix_row, matrix_col)
+    
     # Calculate summary statistics
     summary_stats = df.describe()
     
@@ -343,11 +379,12 @@ def main():
     parser = argparse.ArgumentParser(description='Analyze cost matrix sweep results')
     parser.add_argument('results_dir', help='Directory containing the results')
     parser.add_argument('--final', action='store_true', help='Generate final comprehensive report')
+    parser.add_argument('--sweep-config', help='Path to the sweep configuration file')
     
     args = parser.parse_args()
     
     # Load sweep configuration
-    sweep_config = load_sweep_config()
+    sweep_config = load_sweep_config(args.sweep_config)
     matrix_row = sweep_config['matrix_cell']['row']
     matrix_col = sweep_config['matrix_cell']['col']
     target_class = matrix_col  # Target class is determined by the column being modified
@@ -359,7 +396,7 @@ def main():
     Path(graphs_dir).mkdir(parents=True, exist_ok=True)
     
     # Load data
-    df = load_metrics_data(args.results_dir)
+    df = load_metrics_data(args.results_dir, matrix_row, matrix_col)
     if df is None or len(df) == 0:
         print("No data available for analysis.")
         return
@@ -370,7 +407,7 @@ def main():
     print("Creating visualizations...")
     
     try:
-        create_overall_metrics_plot(df, graphs_dir)
+        create_overall_metrics_plot(df, graphs_dir, matrix_row, matrix_col)
         create_target_class_metrics_plot(df, graphs_dir, target_class, matrix_row, matrix_col)
         create_confusion_cell_plot(df, graphs_dir, matrix_row, matrix_col)
         create_comprehensive_dashboard(df, graphs_dir, target_class, matrix_row, matrix_col)

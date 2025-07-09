@@ -10,7 +10,7 @@
         "description": "Matrix cell [row, col] to modify during sweep"
     },
     "experiment": {
-        "output_dir": "results/sweep_neg_0to100_results_0_1",
+        "output_dir": "results/sweep_neg_0to1000_results_0_1",
         "base_config": "config/localDatasetConfig.json",
         "description": "Cost matrix sweep experiment - varying cell [0,1] from 0.0 to 1000.0"
     },

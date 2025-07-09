@@ -5,14 +5,14 @@
         "step": 50
     },
     "matrix_cell": {
-        "row": 0,
-        "col": 1,
+        "row": 1,
+        "col": 2,
         "description": "Matrix cell [row, col] to modify during sweep"
     },
     "experiment": {
-        "output_dir": "results/sweep_neg_0to100_results_0_1",
-        "base_config": "config/localDatasetConfig.json",
-        "description": "Cost matrix sweep experiment - varying cell [0,1] from 0.0 to 1000.0"
+        "output_dir": "results/sweep_neg_0to1000_results_1_2",
+        "base_config": "config/localDatasetConfig2.json",
+        "description": "Cost matrix sweep experiment - varying cell [1,2] from 0.0 to 10.0"
     },
     "analysis": {
         "update_graphs_each_iteration": true,

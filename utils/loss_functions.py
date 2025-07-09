@@ -236,6 +236,76 @@ class LossFunctions():
         target_probs = probs[range(batch_size), targets]
         log_probs = -torch.log(target_probs + 1e-9)
         return log_probs.mean()
+
+    def CELogitAdjustmentV3(self,
+        logits: torch.Tensor,
+        targets: torch.Tensor,
+    ) -> torch.Tensor:
+        """
+        Computes the cross-entropy loss with logit adjustment by modifying all logits 
+        except the maximum logit based on misclassification using cost matrix values.
+        For misclassified examples, all logits except the maximum logit are adjusted 
+        by subtracting cost_values * diff.
+
+        Args:
+            logits (torch.Tensor): Logits predicted by the model (batch_size, num_classes).
+            targets (torch.Tensor): Ground truth labels (batch_size).
+
+        Returns:
+            torch.Tensor: Computed scalar loss value.
+        """
+        # Clone logits to avoid in-place ops
+        modified_logits = logits.clone()
+
+        batch_size, num_classes = logits.shape
+
+        # Get predicted class (argmax)
+        pred_classes = torch.argmax(modified_logits, dim=1)
+
+        # Gather predicted logits and target logits
+        max_logits = modified_logits[range(batch_size), pred_classes]
+        target_logits = modified_logits[range(batch_size), targets]
+
+        # Identify misclassified examples
+        misclassified = pred_classes != targets
+
+        # Compute difference where misclassified (between max logit and target logit)
+        diff = torch.abs(max_logits - target_logits)
+
+        # Get cost values from cost matrix based on true label (row) and predicted label (column)
+        if self.cost_matrix is not None:
+            cost_values = self.cost_matrix[targets, pred_classes]  # Shape: (batch_size,)
+        else:
+            # Fallback to fixed values if cost matrix is not available
+            cost_values = torch.ones_like(targets, dtype=torch.float32)
+
+        # Create adjustment values for misclassified examples
+        adjustment = cost_values * diff  # Shape: (batch_size,)
+        
+        # Apply adjustment to all logits except the maximum logit for misclassified examples
+        # First, subtract adjustment from ALL logits for misclassified examples
+        misclassified_mask = misclassified.unsqueeze(1)  # Shape: (batch_size, 1)
+        adjustment_expanded = adjustment.unsqueeze(1)  # Shape: (batch_size, 1)
+        
+        modified_logits = torch.where(
+            misclassified_mask, 
+            modified_logits - adjustment_expanded, 
+            modified_logits
+        )
+        
+        # Then add back the adjustment to the maximum logit for misclassified examples
+        # to restore it to its original value (effectively leaving only non-max logits adjusted)
+        modified_logits[range(batch_size), pred_classes] = torch.where(
+            misclassified,
+            modified_logits[range(batch_size), pred_classes] + adjustment,
+            modified_logits[range(batch_size), pred_classes]
+        )
+
+        # Compute softmax and cross-entropy
+        probs = torch.softmax(modified_logits, dim=-1)
+        target_probs = probs[range(batch_size), targets]
+        log_probs = -torch.log(target_probs + 1e-9)
+        return log_probs.mean()
         
     def CELossLTV1(self, output_logits: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
         """

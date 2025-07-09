@@ -582,6 +582,10 @@ def perform_comprehensive_evaluation(trainer, test_ds, script_args, dataset_name
     
     print(f"Results will be saved to: {results_dir}")
     
+    # Save run configuration
+    print("Saving run configuration...")
+    save_run_configuration(script_args, results_dir, dataset_name)
+    
     # Perform evaluation
     print("Running model evaluation...")
     metrics = trainer.evaluate()
@@ -827,3 +831,76 @@ def preprocess_local_folder_dataset(folder_path, model_name, test_size=0.1, val_
     class_names = [idx_to_class[i] for i in range(len(class_folders))]
     
     return train_dataset, val_dataset, test_dataset, class_names 
+
+def save_run_configuration(script_args, output_dir, dataset_name=None):
+    """
+    Save the input configuration for the current run to a JSON file.
+    
+    Args:
+        script_args: Script arguments containing all configuration parameters
+        output_dir: Directory to save the configuration file
+        dataset_name: Optional dataset name for better identification
+    """
+    # Create output directory if it doesn't exist
+    Path(output_dir).mkdir(parents=True, exist_ok=True)
+    
+    # Create timestamp for the configuration
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    
+    # Determine dataset path/location based on dataset_host
+    dataset_location = None
+    if script_args.dataset_host == "huggingface":
+        dataset_location = script_args.dataset
+    elif script_args.dataset_host == "kaggle":
+        dataset_location = f"kaggle:{script_args.dataset}"
+        if script_args.local_dataset_name:
+            dataset_location += f"/{script_args.local_dataset_name}"
+    elif script_args.dataset_host == "local_folder":
+        dataset_location = script_args.local_folder_path
+    else:
+        dataset_location = script_args.dataset if script_args.dataset else "unknown"
+    
+    # Prepare configuration dictionary
+    config = {
+        "run_info": {
+            "timestamp": timestamp,
+            "output_directory": output_dir
+        },
+        "model_configuration": {
+            "model": script_args.model,
+            "weights": script_args.weights,
+            "num_labels": script_args.num_labels
+        },
+        "dataset_configuration": {
+            "dataset_host": script_args.dataset_host,
+            "dataset": script_args.dataset,
+            "dataset_location": dataset_location,
+            "local_dataset_name": script_args.local_dataset_name,
+            "local_folder_path": script_args.local_folder_path
+        },
+        "training_parameters": {
+            "batch_size": script_args.batch_size,
+            "learning_rate": script_args.learning_rate,
+            "num_train_epochs": script_args.num_train_epochs,
+            "loss_function": script_args.loss_function
+        },
+        "cost_matrix_configuration": {
+            "cost_matrix": script_args.cost_matrix,
+            "sweep_mode": script_args.sweep_mode,
+            "sweep_cost_value": script_args.sweep_cost_value,
+            "sweep_matrix_row": script_args.sweep_matrix_row,
+            "sweep_matrix_col": script_args.sweep_matrix_col
+        },
+        "other_settings": {
+            "wandb_enabled": script_args.wandb,
+            "push_to_hub": script_args.push_to_hub
+        }
+    }
+    
+    # Save configuration to JSON file
+    config_path = os.path.join(output_dir, f"run_configuration_{timestamp}.json")
+    with open(config_path, 'w') as f:
+        json.dump(config, f, indent=2)
+    
+    print(f"Run configuration saved to: {config_path}")
+    return config_path 
