@@ -85,6 +85,10 @@ def extract_metrics(results_dir, cost_value, sweep_config_file=None):
         overall_accuracy = data['overall_metrics']['accuracy']
         overall_f1 = data['overall_metrics']['f1_score']
         
+        # Extract per-class metrics
+        per_class_accuracy = data['per_class_metrics']['accuracy']
+        per_class_f1 = data['per_class_metrics']['f1_score']
+        
         # Extract confusion matrix
         confusion_matrix = data['confusion_matrix']
         cm = np.array(confusion_matrix)
@@ -121,6 +125,10 @@ def extract_metrics(results_dir, cost_value, sweep_config_file=None):
                 # Confusion matrix cell values using configured row/col
                 confusion_matrix_raw = cm[matrix_row, matrix_col] if cm.shape[0] > matrix_row and cm.shape[1] > matrix_col else 0
                 
+                # Calculate percentage: sweep_cell_count / row_total_count
+                row_total = np.sum(cm[matrix_row, :]) if cm.shape[0] > matrix_row else 0
+                confusion_matrix_percentage = (confusion_matrix_raw / row_total * 100) if row_total > 0 else 0.0
+                
                 # Calculate precision and recall matrices
                 cm_precision = cm.astype(float) / np.sum(cm, axis=0)[np.newaxis, :]
                 cm_precision = np.nan_to_num(cm_precision)
@@ -135,6 +143,7 @@ def extract_metrics(results_dir, cost_value, sweep_config_file=None):
                 class1_recall = 0.0
                 class1_accuracy = 0.0
                 confusion_matrix_raw = 0
+                confusion_matrix_percentage = 0.0
                 confusion_matrix_precision = 0.0
                 confusion_matrix_recall = 0.0
         else:
@@ -144,19 +153,46 @@ def extract_metrics(results_dir, cost_value, sweep_config_file=None):
             class1_recall = 0.0
             class1_accuracy = 0.0
             confusion_matrix_raw = 0
+            confusion_matrix_percentage = 0.0
             confusion_matrix_precision = 0.0
             confusion_matrix_recall = 0.0
+            per_class_accuracy = {}
+            per_class_f1 = {}
+        
+        # Convert per-class metrics to formatted strings
+        num_classes = len(per_class_accuracy) if per_class_accuracy else 0
+        class_acc_values = []
+        class_f1_values = []
+        
+        for i in range(num_classes):
+            class_acc_values.append(str(per_class_accuracy.get(str(i), 0.0)))
+            class_f1_values.append(str(per_class_f1.get(str(i), 0.0)))
+        
+        class_accuracies = '|'.join(class_acc_values) if class_acc_values else ''
+        class_f1_scores = '|'.join(class_f1_values) if class_f1_values else ''
+        
+        # Flatten confusion matrix for other cells (excluding the sweep cell)
+        cm_flat = []
+        if cm.size > 0:
+            for i in range(cm.shape[0]):
+                for j in range(cm.shape[1]):
+                    if i != matrix_row or j != matrix_col:  # Exclude the sweep cell
+                        cm_flat.append(str(cm[i, j]))
+        
+        other_cells = '|'.join(cm_flat) if cm_flat else ''
         
         # Get timestamp
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         
-        # Create CSV line with dynamic column names
-        csv_line = f'{cost_value},{overall_accuracy:.6f},{overall_precision:.6f},{overall_recall:.6f},{overall_f1:.6f},{class1_accuracy:.6f},{class1_precision:.6f},{class1_recall:.6f},{confusion_matrix_raw},{confusion_matrix_precision:.6f},{confusion_matrix_recall:.6f},{results_dir},{timestamp}'
+        # Create CSV line with all metrics
+        csv_line = f'{cost_value},{overall_accuracy:.6f},{overall_f1:.6f},{overall_precision:.6f},{overall_recall:.6f},{class1_accuracy:.6f},{class1_precision:.6f},{class1_recall:.6f},{confusion_matrix_raw},{confusion_matrix_percentage:.6f},{confusion_matrix_precision:.6f},{confusion_matrix_recall:.6f},{class_accuracies},{class_f1_scores},{other_cells},{results_dir},{timestamp}'
         
         return csv_line
         
     except Exception as e:
         print(f"ERROR extracting metrics from {metrics_file}: {e}", file=sys.stderr)
+        import traceback
+        traceback.print_exc()
         return None
 
 def get_csv_header(sweep_config_file=None):
@@ -165,7 +201,7 @@ def get_csv_header(sweep_config_file=None):
     matrix_row = sweep_config['matrix_cell']['row']
     matrix_col = sweep_config['matrix_cell']['col']
     
-    return f'cost_matrix_value,overall_accuracy,overall_precision,overall_recall,overall_f1,class1_accuracy,class1_precision,class1_recall,confusion_{matrix_row}_{matrix_col}_raw,confusion_{matrix_row}_{matrix_col}_precision,confusion_{matrix_row}_{matrix_col}_recall,results_dir,timestamp'
+    return f'cost_matrix_value,overall_accuracy,overall_f1,overall_precision,overall_recall,class1_accuracy,class1_precision,class1_recall,confusion_{matrix_row}_{matrix_col}_raw,confusion_{matrix_row}_{matrix_col}_percentage,confusion_{matrix_row}_{matrix_col}_precision,confusion_{matrix_row}_{matrix_col}_recall,class_accuracies,class_f1_scores,other_cells_raw,results_dir,timestamp'
 
 def main():
     parser = argparse.ArgumentParser(description='Extract metrics from training results')

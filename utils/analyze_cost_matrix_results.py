@@ -50,13 +50,61 @@ def load_sweep_config(sweep_config_file=None):
         "experiment": {"description": "Cost matrix sweep"}
     }
 
-def get_dynamic_column_names(matrix_row, matrix_col):
-    """Get the dynamic column names based on matrix cell."""
-    return {
-        'confusion_raw': f'confusion_{matrix_row}_{matrix_col}_raw',
-        'confusion_precision': f'confusion_{matrix_row}_{matrix_col}_precision',
-        'confusion_recall': f'confusion_{matrix_row}_{matrix_col}_recall'
-    }
+def parse_class_metrics(df, metric_column):
+    """Parse pipe-separated class metrics into separate columns."""
+    class_data = {}
+    
+    for idx, row in df.iterrows():
+        if pd.notna(row[metric_column]) and row[metric_column].strip():
+            values = row[metric_column].split('|')
+            for i, value in enumerate(values):
+                if f'class_{i}' not in class_data:
+                    class_data[f'class_{i}'] = []
+                try:
+                    class_data[f'class_{i}'].append(float(value))
+                except ValueError:
+                    class_data[f'class_{i}'].append(0.0)
+        else:
+            # Handle missing data
+            if class_data:  # If we already have some data, pad with zeros
+                num_classes = len(class_data)
+                for i in range(num_classes):
+                    class_data[f'class_{i}'].append(0.0)
+    
+    return class_data
+
+def parse_other_cells(df, matrix_row, matrix_col, num_classes=3):
+    """Parse pipe-separated other cell values into position-labeled data."""
+    other_cells_data = {}
+    
+    for idx, row in df.iterrows():
+        if pd.notna(row['other_cells_raw']) and row['other_cells_raw'].strip():
+            values = row['other_cells_raw'].split('|')
+            cell_idx = 0
+            
+            for i in range(num_classes):
+                for j in range(num_classes):
+                    if i != matrix_row or j != matrix_col:  # Skip sweep cell
+                        cell_name = f'cell_{i}_{j}'
+                        if cell_name not in other_cells_data:
+                            other_cells_data[cell_name] = []
+                        
+                        if cell_idx < len(values):
+                            try:
+                                other_cells_data[cell_name].append(float(values[cell_idx]))
+                            except ValueError:
+                                other_cells_data[cell_name].append(0.0)
+                        else:
+                            other_cells_data[cell_name].append(0.0)
+                        
+                        cell_idx += 1
+        else:
+            # Handle missing data
+            if other_cells_data:
+                for cell_name in other_cells_data:
+                    other_cells_data[cell_name].append(0.0)
+    
+    return other_cells_data
 
 def load_metrics_data(results_dir, matrix_row, matrix_col):
     """Load the metrics CSV file and return a pandas DataFrame."""
@@ -69,62 +117,25 @@ def load_metrics_data(results_dir, matrix_row, matrix_col):
     try:
         df = pd.read_csv(metrics_file)
         print(f"Loaded {len(df)} data points from {metrics_file}")
-        
-        # Get dynamic column names
-        col_names = get_dynamic_column_names(matrix_row, matrix_col)
-        
-        # Check if the expected columns exist
-        expected_columns = [col_names['confusion_raw'], col_names['confusion_precision'], col_names['confusion_recall']]
-        missing_columns = [col for col in expected_columns if col not in df.columns]
-        
-        if missing_columns:
-            print(f"WARNING: Missing columns in CSV: {missing_columns}")
-            print(f"Available columns: {list(df.columns)}")
-            # Add missing columns with default values
-            for col in missing_columns:
-                df[col] = 0
-        
         return df
     except Exception as e:
         print(f"ERROR loading metrics file: {e}")
         return None
 
-def create_overall_metrics_plot(df, output_dir, matrix_row, matrix_col):
-    """Create plots for overall performance metrics."""
-    fig, axes = plt.subplots(2, 2, figsize=(15, 12))
-    fig.suptitle('Overall Performance Metrics vs Cost Matrix Value', fontsize=16, fontweight='bold')
+def create_overall_metrics_graph(df, output_dir, matrix_row, matrix_col):
+    """Create Overall Metrics graph - overall accuracy and F1 score."""
+    fig, ax = plt.subplots(1, 1, figsize=(12, 8))
     
-    # Overall Accuracy
-    axes[0,0].plot(df['cost_matrix_value'], df['overall_accuracy'], 'b-o', linewidth=2, markersize=6)
-    axes[0,0].set_title('Overall Accuracy', fontweight='bold')
-    axes[0,0].set_xlabel(f'Cost Matrix Value [{matrix_row},{matrix_col}]')
-    axes[0,0].set_ylabel('Accuracy')
-    axes[0,0].grid(True, alpha=0.3)
-    axes[0,0].set_ylim([0, 1])
+    # Plot overall accuracy and F1 score
+    ax.plot(df['cost_matrix_value'], df['overall_accuracy'], 'b-o', linewidth=2, markersize=6, label='Overall Accuracy')
+    ax.plot(df['cost_matrix_value'], df['overall_f1'], 'r-o', linewidth=2, markersize=6, label='Overall F1 Score')
     
-    # Overall Precision
-    axes[0,1].plot(df['cost_matrix_value'], df['overall_precision'], 'g-o', linewidth=2, markersize=6)
-    axes[0,1].set_title('Overall Precision', fontweight='bold')
-    axes[0,1].set_xlabel(f'Cost Matrix Value [{matrix_row},{matrix_col}]')
-    axes[0,1].set_ylabel('Precision')
-    axes[0,1].grid(True, alpha=0.3)
-    axes[0,1].set_ylim([0, 1])
-    
-    # Overall Recall
-    axes[1,0].plot(df['cost_matrix_value'], df['overall_recall'], 'r-o', linewidth=2, markersize=6)
-    axes[1,0].set_title('Overall Recall', fontweight='bold')
-    axes[1,0].set_xlabel(f'Cost Matrix Value [{matrix_row},{matrix_col}]')
-    axes[1,0].set_ylabel('Recall')
-    axes[1,0].grid(True, alpha=0.3)
-    axes[1,0].set_ylim([0, 1])
-    
-    # Overall F1 Score
-    axes[1,1].plot(df['cost_matrix_value'], df['overall_f1'], 'm-o', linewidth=2, markersize=6)
-    axes[1,1].set_title('Overall F1 Score', fontweight='bold')
-    axes[1,1].set_xlabel(f'Cost Matrix Value [{matrix_row},{matrix_col}]')
-    axes[1,1].set_ylabel('F1 Score')
-    axes[1,1].grid(True, alpha=0.3)
-    axes[1,1].set_ylim([0, 1])
+    ax.set_title(f'Overall Metrics vs Cost Matrix Value [{matrix_row},{matrix_col}]', fontsize=16, fontweight='bold')
+    ax.set_xlabel(f'Cost Matrix Value [{matrix_row},{matrix_col}]', fontsize=12)
+    ax.set_ylabel('Metric Value', fontsize=12)
+    ax.legend(fontsize=12)
+    ax.grid(True, alpha=0.3)
+    ax.set_ylim([0, 1])
     
     plt.tight_layout()
     
@@ -134,182 +145,273 @@ def create_overall_metrics_plot(df, output_dir, matrix_row, matrix_col):
     plt.savefig(output_path.replace('.png', '.pdf'), bbox_inches='tight', facecolor='white')
     plt.close()
     
-    print(f"Overall metrics plot saved to: {output_path}")
+    print(f"Overall metrics graph saved to: {output_path}")
 
-def create_target_class_metrics_plot(df, output_dir, target_class, matrix_row, matrix_col):
-    """Create plots for target class specific metrics."""
-    fig, axes = plt.subplots(1, 3, figsize=(18, 6))
-    fig.suptitle(f'Class {target_class} Performance Metrics vs Cost Matrix Value [{matrix_row},{matrix_col}]', fontsize=16, fontweight='bold')
+def create_class_accuracy_graph(df, output_dir, matrix_row, matrix_col):
+    """Create Class Accuracy graph - accuracies of all classes."""
+    class_data = parse_class_metrics(df, 'class_accuracies')
     
-    # Target Class Accuracy
-    axes[0].plot(df['cost_matrix_value'], df['class1_accuracy'], 'b-o', linewidth=2, markersize=6)
-    axes[0].set_title(f'Class {target_class} Accuracy', fontweight='bold')
-    axes[0].set_xlabel(f'Cost Matrix Value [{matrix_row},{matrix_col}]')
-    axes[0].set_ylabel('Accuracy')
-    axes[0].grid(True, alpha=0.3)
-    axes[0].set_ylim([0, 1])
+    if not class_data:
+        print("WARNING: No class accuracy data found")
+        return
     
-    # Target Class Precision
-    axes[1].plot(df['cost_matrix_value'], df['class1_precision'], 'g-o', linewidth=2, markersize=6)
-    axes[1].set_title(f'Class {target_class} Precision', fontweight='bold')
-    axes[1].set_xlabel(f'Cost Matrix Value [{matrix_row},{matrix_col}]')
-    axes[1].set_ylabel('Precision')
-    axes[1].grid(True, alpha=0.3)
-    axes[1].set_ylim([0, 1])
+    fig, ax = plt.subplots(1, 1, figsize=(12, 8))
     
-    # Target Class Recall
-    axes[2].plot(df['cost_matrix_value'], df['class1_recall'], 'r-o', linewidth=2, markersize=6)
-    axes[2].set_title(f'Class {target_class} Recall', fontweight='bold')
-    axes[2].set_xlabel(f'Cost Matrix Value [{matrix_row},{matrix_col}]')
-    axes[2].set_ylabel('Recall')
-    axes[2].grid(True, alpha=0.3)
-    axes[2].set_ylim([0, 1])
+    # Plot each class accuracy
+    colors = plt.cm.Set1(np.linspace(0, 1, len(class_data)))
+    for i, (class_name, values) in enumerate(class_data.items()):
+        ax.plot(df['cost_matrix_value'][:len(values)], values, '-o', linewidth=2, markersize=6, 
+                label=f'Class {class_name.split("_")[1]}', color=colors[i])
+    
+    ax.set_title(f'Class Accuracies vs Cost Matrix Value [{matrix_row},{matrix_col}]', fontsize=16, fontweight='bold')
+    ax.set_xlabel(f'Cost Matrix Value [{matrix_row},{matrix_col}]', fontsize=12)
+    ax.set_ylabel('Accuracy', fontsize=12)
+    ax.legend(fontsize=12)
+    ax.grid(True, alpha=0.3)
+    ax.set_ylim([0, 1])
     
     plt.tight_layout()
     
     # Save the plot
-    output_path = os.path.join(output_dir, f'class{target_class}_metrics.png')
+    output_path = os.path.join(output_dir, 'class_accuracies.png')
     plt.savefig(output_path, dpi=300, bbox_inches='tight', facecolor='white')
     plt.savefig(output_path.replace('.png', '.pdf'), bbox_inches='tight', facecolor='white')
     plt.close()
     
-    print(f"Class {target_class} metrics plot saved to: {output_path}")
+    print(f"Class accuracies graph saved to: {output_path}")
 
-def create_confusion_cell_plot(df, output_dir, matrix_row, matrix_col):
-    """Create plots for confusion matrix cell metrics."""
-    col_names = get_dynamic_column_names(matrix_row, matrix_col)
+def create_class_f1_graph(df, output_dir, matrix_row, matrix_col):
+    """Create Class F1 Score graph - F1 scores of all classes."""
+    class_data = parse_class_metrics(df, 'class_f1_scores')
     
-    fig, axes = plt.subplots(1, 3, figsize=(18, 6))
-    fig.suptitle(f'Confusion Matrix Cell [{matrix_row},{matrix_col}] Metrics vs Cost Matrix Value', fontsize=16, fontweight='bold')
+    if not class_data:
+        print("WARNING: No class F1 data found")
+        return
     
-    # Raw Count
-    axes[0].plot(df['cost_matrix_value'], df[col_names['confusion_raw']], 'orange', marker='o', linewidth=2, markersize=6)
-    axes[0].set_title(f'Raw Count in Cell [{matrix_row},{matrix_col}]', fontweight='bold')
-    axes[0].set_xlabel(f'Cost Matrix Value [{matrix_row},{matrix_col}]')
-    axes[0].set_ylabel('Raw Count')
-    axes[0].grid(True, alpha=0.3)
+    fig, ax = plt.subplots(1, 1, figsize=(12, 8))
     
-    # Precision Value
-    axes[1].plot(df['cost_matrix_value'], df[col_names['confusion_precision']], 'purple', marker='o', linewidth=2, markersize=6)
-    axes[1].set_title(f'Precision Value in Cell [{matrix_row},{matrix_col}]', fontweight='bold')
-    axes[1].set_xlabel(f'Cost Matrix Value [{matrix_row},{matrix_col}]')
-    axes[1].set_ylabel('Precision Value')
-    axes[1].grid(True, alpha=0.3)
-    axes[1].set_ylim([0, 1])
+    # Plot each class F1 score
+    colors = plt.cm.Set2(np.linspace(0, 1, len(class_data)))
+    for i, (class_name, values) in enumerate(class_data.items()):
+        ax.plot(df['cost_matrix_value'][:len(values)], values, '-o', linewidth=2, markersize=6, 
+                label=f'Class {class_name.split("_")[1]}', color=colors[i])
     
-    # Recall Value
-    axes[2].plot(df['cost_matrix_value'], df[col_names['confusion_recall']], 'brown', marker='o', linewidth=2, markersize=6)
-    axes[2].set_title(f'Recall Value in Cell [{matrix_row},{matrix_col}]', fontweight='bold')
-    axes[2].set_xlabel(f'Cost Matrix Value [{matrix_row},{matrix_col}]')
-    axes[2].set_ylabel('Recall Value')
-    axes[2].grid(True, alpha=0.3)
-    axes[2].set_ylim([0, 1])
+    ax.set_title(f'Class F1 Scores vs Cost Matrix Value [{matrix_row},{matrix_col}]', fontsize=16, fontweight='bold')
+    ax.set_xlabel(f'Cost Matrix Value [{matrix_row},{matrix_col}]', fontsize=12)
+    ax.set_ylabel('F1 Score', fontsize=12)
+    ax.legend(fontsize=12)
+    ax.grid(True, alpha=0.3)
+    ax.set_ylim([0, 1])
     
     plt.tight_layout()
     
     # Save the plot
-    output_path = os.path.join(output_dir, f'confusion_cell_{matrix_row}_{matrix_col}_metrics.png')
+    output_path = os.path.join(output_dir, 'class_f1_scores.png')
     plt.savefig(output_path, dpi=300, bbox_inches='tight', facecolor='white')
     plt.savefig(output_path.replace('.png', '.pdf'), bbox_inches='tight', facecolor='white')
     plt.close()
     
-    print(f"Confusion cell [{matrix_row},{matrix_col}] metrics plot saved to: {output_path}")
+    print(f"Class F1 scores graph saved to: {output_path}")
 
-def create_comprehensive_dashboard(df, output_dir, target_class, matrix_row, matrix_col):
-    """Create a comprehensive dashboard with all metrics."""
-    col_names = get_dynamic_column_names(matrix_row, matrix_col)
+def create_sweep_cell_raw_count_graph(df, output_dir, matrix_row, matrix_col):
+    """Create Raw Count Sweep Cell graph - raw count of the sweep cell."""
+    sweep_col = f'confusion_{matrix_row}_{matrix_col}_raw'
     
-    fig = plt.figure(figsize=(20, 16))
-    gs = fig.add_gridspec(4, 3, hspace=0.3, wspace=0.3)
+    if sweep_col not in df.columns:
+        print(f"WARNING: Sweep cell column {sweep_col} not found")
+        return
     
-    fig.suptitle(f'Cost Matrix Sweep [{matrix_row},{matrix_col}]: Comprehensive Analysis Dashboard', fontsize=20, fontweight='bold', y=0.98)
+    fig, ax = plt.subplots(1, 1, figsize=(12, 8))
     
-    # Row 1: Overall Metrics
+    ax.plot(df['cost_matrix_value'], df[sweep_col], 'purple', marker='o', linewidth=2, markersize=6, 
+            label=f'Raw Count Cell [{matrix_row},{matrix_col}]')
+    
+    ax.set_title(f'Raw Count in Sweep Cell [{matrix_row},{matrix_col}] vs Cost Matrix Value', fontsize=16, fontweight='bold')
+    ax.set_xlabel(f'Cost Matrix Value [{matrix_row},{matrix_col}]', fontsize=12)
+    ax.set_ylabel('Raw Count', fontsize=12)
+    ax.legend(fontsize=12)
+    ax.grid(True, alpha=0.3)
+    
+    plt.tight_layout()
+    
+    # Save the plot
+    output_path = os.path.join(output_dir, 'sweep_cell_raw_count.png')
+    plt.savefig(output_path, dpi=300, bbox_inches='tight', facecolor='white')
+    plt.savefig(output_path.replace('.png', '.pdf'), bbox_inches='tight', facecolor='white')
+    plt.close()
+    
+    print(f"Sweep cell raw count graph saved to: {output_path}")
+
+def create_count_percentage_graph(df, output_dir, matrix_row, matrix_col):
+    """Create Count Percentage graph - percentage of sweep cell / row total."""
+    percentage_col = f'confusion_{matrix_row}_{matrix_col}_percentage'
+    
+    if percentage_col not in df.columns:
+        print(f"WARNING: Percentage column {percentage_col} not found")
+        return
+    
+    fig, ax = plt.subplots(1, 1, figsize=(12, 8))
+    
+    ax.plot(df['cost_matrix_value'], df[percentage_col], 'orange', marker='o', linewidth=2, markersize=6,
+            label=f'Percentage of Cell [{matrix_row},{matrix_col}] / Row {matrix_row} Total')
+    
+    ax.set_title(f'Count Percentage in Sweep Cell [{matrix_row},{matrix_col}] vs Cost Matrix Value', fontsize=16, fontweight='bold')
+    ax.set_xlabel(f'Cost Matrix Value [{matrix_row},{matrix_col}]', fontsize=12)
+    ax.set_ylabel('Percentage (%)', fontsize=12)
+    ax.legend(fontsize=12)
+    ax.grid(True, alpha=0.3)
+    
+    # Set dynamic y-axis limits based on data range with padding
+    min_val = df[percentage_col].min()
+    max_val = df[percentage_col].max()
+    range_val = max_val - min_val
+    padding = max(range_val * 0.1, 2.0)  # 10% padding or minimum 2% padding
+    y_min = max(0, min_val - padding)
+    y_max = min(100, max_val + padding)
+    ax.set_ylim([y_min, y_max])
+    
+    plt.tight_layout()
+    
+    # Save the plot
+    output_path = os.path.join(output_dir, 'count_percentage.png')
+    plt.savefig(output_path, dpi=300, bbox_inches='tight', facecolor='white')
+    plt.savefig(output_path.replace('.png', '.pdf'), bbox_inches='tight', facecolor='white')
+    plt.close()
+    
+    print(f"Count percentage graph saved to: {output_path}")
+
+def create_other_cells_raw_count_graph(df, output_dir, matrix_row, matrix_col, num_classes=3):
+    """Create Raw Count Other Cells graph - raw counts of all other cells."""
+    other_cells_data = parse_other_cells(df, matrix_row, matrix_col, num_classes)
+    
+    if not other_cells_data:
+        print("WARNING: No other cells data found")
+        return
+    
+    fig, ax = plt.subplots(1, 1, figsize=(14, 8))
+    
+    # Plot each other cell
+    colors = plt.cm.tab10(np.linspace(0, 1, len(other_cells_data)))
+    for i, (cell_name, values) in enumerate(other_cells_data.items()):
+        row, col = cell_name.split('_')[1], cell_name.split('_')[2]
+        ax.plot(df['cost_matrix_value'][:len(values)], values, '-o', linewidth=2, markersize=4,
+                label=f'Cell [{row},{col}]', color=colors[i])
+    
+    ax.set_title(f'Raw Counts in Other Confusion Matrix Cells vs Cost Matrix Value [{matrix_row},{matrix_col}]', 
+                fontsize=16, fontweight='bold')
+    ax.set_xlabel(f'Cost Matrix Value [{matrix_row},{matrix_col}]', fontsize=12)
+    ax.set_ylabel('Raw Count', fontsize=12)
+    ax.legend(fontsize=10, ncol=2)
+    ax.grid(True, alpha=0.3)
+    
+    plt.tight_layout()
+    
+    # Save the plot
+    output_path = os.path.join(output_dir, 'other_cells_raw_counts.png')
+    plt.savefig(output_path, dpi=300, bbox_inches='tight', facecolor='white')
+    plt.savefig(output_path.replace('.png', '.pdf'), bbox_inches='tight', facecolor='white')
+    plt.close()
+    
+    print(f"Other cells raw counts graph saved to: {output_path}")
+
+def create_comprehensive_dashboard(df, output_dir, matrix_row, matrix_col, num_classes=3):
+    """Create a comprehensive dashboard with all 6 graphs in subplots."""
+    fig = plt.figure(figsize=(20, 24))
+    gs = fig.add_gridspec(3, 2, hspace=0.3, wspace=0.3)
+    
+    fig.suptitle(f'Cost Matrix Sweep [{matrix_row},{matrix_col}]: Comprehensive Analysis Dashboard', 
+                fontsize=20, fontweight='bold', y=0.98)
+    
+    # 1. Overall Metrics (top left)
     ax1 = fig.add_subplot(gs[0, 0])
-    ax1.plot(df['cost_matrix_value'], df['overall_accuracy'], 'b-o', linewidth=2, markersize=4)
-    ax1.set_title('Overall Accuracy', fontweight='bold')
-    ax1.set_ylabel('Accuracy')
+    ax1.plot(df['cost_matrix_value'], df['overall_accuracy'], 'b-o', linewidth=2, markersize=5, label='Overall Accuracy')
+    ax1.plot(df['cost_matrix_value'], df['overall_f1'], 'r-o', linewidth=2, markersize=5, label='Overall F1 Score')
+    ax1.set_title('Overall Metrics', fontweight='bold', fontsize=14)
+    ax1.set_xlabel(f'Cost Matrix Value [{matrix_row},{matrix_col}]', fontsize=10)
+    ax1.set_ylabel('Metric Value', fontsize=10)
+    ax1.legend(fontsize=10)
     ax1.grid(True, alpha=0.3)
     ax1.set_ylim([0, 1])
     
+    # 2. Class Accuracies (top right)
     ax2 = fig.add_subplot(gs[0, 1])
-    ax2.plot(df['cost_matrix_value'], df['overall_precision'], 'g-o', linewidth=2, markersize=4)
-    ax2.set_title('Overall Precision', fontweight='bold')
-    ax2.set_ylabel('Precision')
+    class_acc_data = parse_class_metrics(df, 'class_accuracies')
+    if class_acc_data:
+        colors = plt.cm.Set1(np.linspace(0, 1, len(class_acc_data)))
+        for i, (class_name, values) in enumerate(class_acc_data.items()):
+            ax2.plot(df['cost_matrix_value'][:len(values)], values, '-o', linewidth=2, markersize=5, 
+                    label=f'Class {class_name.split("_")[1]}', color=colors[i])
+        ax2.legend(fontsize=10)
+    ax2.set_title('Class Accuracies', fontweight='bold', fontsize=14)
+    ax2.set_xlabel(f'Cost Matrix Value [{matrix_row},{matrix_col}]', fontsize=10)
+    ax2.set_ylabel('Accuracy', fontsize=10)
     ax2.grid(True, alpha=0.3)
     ax2.set_ylim([0, 1])
     
-    ax3 = fig.add_subplot(gs[0, 2])
-    ax3.plot(df['cost_matrix_value'], df['overall_recall'], 'r-o', linewidth=2, markersize=4)
-    ax3.set_title('Overall Recall', fontweight='bold')
-    ax3.set_ylabel('Recall')
+    # 3. Class F1 Scores (middle left)
+    ax3 = fig.add_subplot(gs[1, 0])
+    class_f1_data = parse_class_metrics(df, 'class_f1_scores')
+    if class_f1_data:
+        colors = plt.cm.Set2(np.linspace(0, 1, len(class_f1_data)))
+        for i, (class_name, values) in enumerate(class_f1_data.items()):
+            ax3.plot(df['cost_matrix_value'][:len(values)], values, '-o', linewidth=2, markersize=5, 
+                    label=f'Class {class_name.split("_")[1]}', color=colors[i])
+        ax3.legend(fontsize=10)
+    ax3.set_title('Class F1 Scores', fontweight='bold', fontsize=14)
+    ax3.set_xlabel(f'Cost Matrix Value [{matrix_row},{matrix_col}]', fontsize=10)
+    ax3.set_ylabel('F1 Score', fontsize=10)
     ax3.grid(True, alpha=0.3)
     ax3.set_ylim([0, 1])
     
-    # Row 2: F1 and Class 1 Accuracy
-    ax4 = fig.add_subplot(gs[1, 0])
-    ax4.plot(df['cost_matrix_value'], df['overall_f1'], 'm-o', linewidth=2, markersize=4)
-    ax4.set_title('Overall F1 Score', fontweight='bold')
-    ax4.set_ylabel('F1 Score')
+    # 4. Sweep Cell Raw Count (middle right)
+    ax4 = fig.add_subplot(gs[1, 1])
+    sweep_col = f'confusion_{matrix_row}_{matrix_col}_raw'
+    if sweep_col in df.columns:
+        ax4.plot(df['cost_matrix_value'], df[sweep_col], 'purple', marker='o', linewidth=2, markersize=5, 
+                label=f'Raw Count Cell [{matrix_row},{matrix_col}]')
+        ax4.legend(fontsize=10)
+    ax4.set_title(f'Raw Count Sweep Cell [{matrix_row},{matrix_col}]', fontweight='bold', fontsize=14)
+    ax4.set_xlabel(f'Cost Matrix Value [{matrix_row},{matrix_col}]', fontsize=10)
+    ax4.set_ylabel('Raw Count', fontsize=10)
     ax4.grid(True, alpha=0.3)
-    ax4.set_ylim([0, 1])
     
-    ax5 = fig.add_subplot(gs[1, 1])
-    ax5.plot(df['cost_matrix_value'], df['class1_accuracy'], 'cyan', marker='o', linewidth=2, markersize=4)
-    ax5.set_title(f'Class {target_class} Accuracy', fontweight='bold')
-    ax5.set_ylabel(f'Class {target_class} Accuracy')
+    # 5. Count Percentage (bottom left)
+    ax5 = fig.add_subplot(gs[2, 0])
+    percentage_col = f'confusion_{matrix_row}_{matrix_col}_percentage'
+    if percentage_col in df.columns:
+        ax5.plot(df['cost_matrix_value'], df[percentage_col], 'orange', marker='o', linewidth=2, markersize=5,
+                label=f'Percentage of Cell [{matrix_row},{matrix_col}] / Row {matrix_row} Total')
+        ax5.legend(fontsize=10)
+        
+        # Set dynamic y-axis limits based on data range with padding
+        min_val = df[percentage_col].min()
+        max_val = df[percentage_col].max()
+        range_val = max_val - min_val
+        padding = max(range_val * 0.1, 2.0)  # 10% padding or minimum 2% padding
+        y_min = max(0, min_val - padding)
+        y_max = min(100, max_val + padding)
+        ax5.set_ylim([y_min, y_max])
+    ax5.set_title(f'Count Percentage Cell [{matrix_row},{matrix_col}]', fontweight='bold', fontsize=14)
+    ax5.set_xlabel(f'Cost Matrix Value [{matrix_row},{matrix_col}]', fontsize=10)
+    ax5.set_ylabel('Percentage (%)', fontsize=10)
     ax5.grid(True, alpha=0.3)
-    ax5.set_ylim([0, 1])
     
-    ax6 = fig.add_subplot(gs[1, 2])
-    ax6.plot(df['cost_matrix_value'], df['class1_precision'], 'orange', marker='o', linewidth=2, markersize=4)
-    ax6.set_title(f'Class {target_class} Precision', fontweight='bold')
-    ax6.set_ylabel(f'Class {target_class} Precision')
+    # 6. Other Cells Raw Counts (bottom right)
+    ax6 = fig.add_subplot(gs[2, 1])
+    other_cells_data = parse_other_cells(df, matrix_row, matrix_col, num_classes)
+    if other_cells_data:
+        colors = plt.cm.tab10(np.linspace(0, 1, len(other_cells_data)))
+        for i, (cell_name, values) in enumerate(other_cells_data.items()):
+            row, col = cell_name.split('_')[1], cell_name.split('_')[2]
+            ax6.plot(df['cost_matrix_value'][:len(values)], values, '-o', linewidth=1.5, markersize=4,
+                    label=f'[{row},{col}]', color=colors[i])
+        ax6.legend(fontsize=8, ncol=2)
+    ax6.set_title('Raw Counts Other Cells', fontweight='bold', fontsize=14)
+    ax6.set_xlabel(f'Cost Matrix Value [{matrix_row},{matrix_col}]', fontsize=10)
+    ax6.set_ylabel('Raw Count', fontsize=10)
     ax6.grid(True, alpha=0.3)
-    ax6.set_ylim([0, 1])
     
-    # Row 3: Target Class Recall and Confusion Raw
-    ax7 = fig.add_subplot(gs[2, 0])
-    ax7.plot(df['cost_matrix_value'], df['class1_recall'], 'purple', marker='o', linewidth=2, markersize=4)
-    ax7.set_title(f'Class {target_class} Recall', fontweight='bold')
-    ax7.set_ylabel(f'Class {target_class} Recall')
-    ax7.grid(True, alpha=0.3)
-    ax7.set_ylim([0, 1])
-    
-    ax8 = fig.add_subplot(gs[2, 1])
-    ax8.plot(df['cost_matrix_value'], df[col_names['confusion_raw']], 'brown', marker='o', linewidth=2, markersize=4)
-    ax8.set_title(f'Raw Count Cell [{matrix_row},{matrix_col}]', fontweight='bold')
-    ax8.set_ylabel('Raw Count')
-    ax8.grid(True, alpha=0.3)
-    
-    ax9 = fig.add_subplot(gs[2, 2])
-    ax9.plot(df['cost_matrix_value'], df[col_names['confusion_precision']], 'pink', marker='o', linewidth=2, markersize=4)
-    ax9.set_title(f'Precision Cell [{matrix_row},{matrix_col}]', fontweight='bold')
-    ax9.set_ylabel('Precision Value')
-    ax9.grid(True, alpha=0.3)
-    ax9.set_ylim([0, 1])
-    
-    # Row 4: Recall Cell and Combined Analysis
-    ax10 = fig.add_subplot(gs[3, 0])
-    ax10.plot(df['cost_matrix_value'], df[col_names['confusion_recall']], 'navy', marker='o', linewidth=2, markersize=4)
-    ax10.set_title(f'Recall Cell [{matrix_row},{matrix_col}]', fontweight='bold')
-    ax10.set_xlabel(f'Cost Matrix Value [{matrix_row},{matrix_col}]')
-    ax10.set_ylabel('Recall Value')
-    ax10.grid(True, alpha=0.3)
-    ax10.set_ylim([0, 1])
-    
-    # Combined metrics comparison
-    ax11 = fig.add_subplot(gs[3, 1:])
-    ax11.plot(df['cost_matrix_value'], df['overall_accuracy'], 'b-', label='Overall Accuracy', linewidth=2)
-    ax11.plot(df['cost_matrix_value'], df['overall_precision'], 'g-', label='Overall Precision', linewidth=2)
-    ax11.plot(df['cost_matrix_value'], df['overall_recall'], 'r-', label='Overall Recall', linewidth=2)
-    ax11.plot(df['cost_matrix_value'], df['overall_f1'], 'm-', label='Overall F1', linewidth=2)
-    ax11.set_title('Combined Overall Metrics Comparison', fontweight='bold')
-    ax11.set_xlabel(f'Cost Matrix Value [{matrix_row},{matrix_col}]')
-    ax11.set_ylabel('Metric Value')
-    ax11.legend()
-    ax11.grid(True, alpha=0.3)
-    ax11.set_ylim([0, 1])
+    plt.tight_layout()
     
     # Save the dashboard
     output_path = os.path.join(output_dir, f'comprehensive_dashboard_{matrix_row}_{matrix_col}.png')
@@ -321,15 +423,12 @@ def create_comprehensive_dashboard(df, output_dir, target_class, matrix_row, mat
 
 def create_summary_statistics(df, output_dir, target_class, matrix_row, matrix_col):
     """Create and save summary statistics."""
-    col_names = get_dynamic_column_names(matrix_row, matrix_col)
-    
     # Calculate summary statistics
     summary_stats = df.describe()
     
     # Find optimal values
     best_overall_accuracy = df.loc[df['overall_accuracy'].idxmax()]
     best_overall_f1 = df.loc[df['overall_f1'].idxmax()]
-    best_class1_accuracy = df.loc[df['class1_accuracy'].idxmax()]
     
     # Calculate step size from data
     if len(df) > 1:
@@ -352,8 +451,7 @@ def create_summary_statistics(df, output_dir, target_class, matrix_row, matrix_c
         f.write("OPTIMAL CONFIGURATIONS:\n")
         f.write("-" * 30 + "\n")
         f.write(f"Best Overall Accuracy: {best_overall_accuracy['overall_accuracy']:.4f} at cost value {best_overall_accuracy['cost_matrix_value']}\n")
-        f.write(f"Best Overall F1 Score: {best_overall_f1['overall_f1']:.4f} at cost value {best_overall_f1['cost_matrix_value']}\n")
-        f.write(f"Best Class {target_class} Accuracy: {best_class1_accuracy['class1_accuracy']:.4f} at cost value {best_class1_accuracy['cost_matrix_value']}\n\n")
+        f.write(f"Best Overall F1 Score: {best_overall_f1['overall_f1']:.4f} at cost value {best_overall_f1['cost_matrix_value']}\n\n")
         
         f.write("SUMMARY STATISTICS:\n")
         f.write("-" * 30 + "\n")
@@ -403,20 +501,25 @@ def main():
     
     print(f"Analyzing {len(df)} experiments...")
     
-    # Generate plots
+    # Generate the 6 specific graphs
     print("Creating visualizations...")
     
     try:
-        create_overall_metrics_plot(df, graphs_dir, matrix_row, matrix_col)
-        create_target_class_metrics_plot(df, graphs_dir, target_class, matrix_row, matrix_col)
-        create_confusion_cell_plot(df, graphs_dir, matrix_row, matrix_col)
-        create_comprehensive_dashboard(df, graphs_dir, target_class, matrix_row, matrix_col)
+        create_overall_metrics_graph(df, graphs_dir, matrix_row, matrix_col)
+        create_class_accuracy_graph(df, graphs_dir, matrix_row, matrix_col)
+        create_class_f1_graph(df, graphs_dir, matrix_row, matrix_col)
+        create_sweep_cell_raw_count_graph(df, graphs_dir, matrix_row, matrix_col)
+        create_count_percentage_graph(df, graphs_dir, matrix_row, matrix_col)
+        create_other_cells_raw_count_graph(df, graphs_dir, matrix_row, matrix_col)
+        
+        # Create comprehensive dashboard
+        create_comprehensive_dashboard(df, graphs_dir, matrix_row, matrix_col)
         
         if args.final:
             create_summary_statistics(df, args.results_dir, target_class, matrix_row, matrix_col)
             print("Final comprehensive analysis completed.")
         
-        print(f"All visualizations saved to: {graphs_dir}")
+        print(f"All 6 visualizations + comprehensive dashboard saved to: {graphs_dir}")
         
     except Exception as e:
         print(f"ERROR creating visualizations: {e}")

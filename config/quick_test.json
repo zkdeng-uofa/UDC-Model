@@ -6,13 +6,13 @@
     },
     "matrix_cell": {
         "row": 0,
-        "col": 1,
-        "description": "Quick test - Matrix cell [1,2] with only 3 values"
+        "col": 2,
+        "description": "Quick test"
     },
     "experiment": {
-        "output_dir": "results/quick_test_results2",
+        "output_dir": "results/quick_test_results3",
         "base_config": "config/localDatasetConfig.json",
-        "description": "Quick test sweep - varying cell [0,1] from 0.0 to 0.5"
+        "description": "Quick test sweep"
     },
     "analysis": {
         "update_graphs_each_iteration": true,
