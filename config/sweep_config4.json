@@ -1,18 +1,18 @@
 {
     "cost_range": {
         "min": 0.0,
-        "max": 1000.0,
-        "step": 50
+        "max": 10.0,
+        "step": 0.5
     },
     "matrix_cell": {
         "row": 1,
-        "col": 2,
+        "col": 0,
         "description": "Matrix cell [row, col] to modify during sweep"
     },
     "experiment": {
-        "output_dir": "results/sweep_neg_0to1000_results_1_2",
-        "base_config": "config/localDatasetConfig2.json",
-        "description": "Cost matrix sweep experiment - varying cell [1,2] from 0.0 to 10.0"
+        "output_dir": "results/cancer_neg_0to10_results_1_0",
+        "base_config": "config/localCSVDatasetConfig.json",
+        "description": "Cost matrix sweep experiment"
     },
     "analysis": {
         "update_graphs_each_iteration": true,

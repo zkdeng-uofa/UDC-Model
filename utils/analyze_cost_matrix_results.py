@@ -135,7 +135,16 @@ def create_overall_metrics_graph(df, output_dir, matrix_row, matrix_col):
     ax.set_ylabel('Metric Value', fontsize=12)
     ax.legend(fontsize=12)
     ax.grid(True, alpha=0.3)
-    ax.set_ylim([0, 1])
+    
+    # Set dynamic y-axis limits based on data range with padding
+    all_values = pd.concat([df['overall_accuracy'], df['overall_f1']])
+    min_val = all_values.min()
+    max_val = all_values.max()
+    range_val = max_val - min_val
+    padding = max(range_val * 0.1, 0.02)  # 10% padding or minimum 2% padding
+    y_min = max(0, min_val - padding)
+    y_max = min(1, max_val + padding)
+    ax.set_ylim([y_min, y_max])
     
     plt.tight_layout()
     
@@ -157,18 +166,31 @@ def create_class_accuracy_graph(df, output_dir, matrix_row, matrix_col):
     
     fig, ax = plt.subplots(1, 1, figsize=(12, 8))
     
-    # Plot each class accuracy
+    # Plot each class accuracy and collect all values for dynamic scaling
     colors = plt.cm.Set1(np.linspace(0, 1, len(class_data)))
+    all_values = []
     for i, (class_name, values) in enumerate(class_data.items()):
         ax.plot(df['cost_matrix_value'][:len(values)], values, '-o', linewidth=2, markersize=6, 
                 label=f'Class {class_name.split("_")[1]}', color=colors[i])
+        all_values.extend(values)
     
     ax.set_title(f'Class Accuracies vs Cost Matrix Value [{matrix_row},{matrix_col}]', fontsize=16, fontweight='bold')
     ax.set_xlabel(f'Cost Matrix Value [{matrix_row},{matrix_col}]', fontsize=12)
     ax.set_ylabel('Accuracy', fontsize=12)
     ax.legend(fontsize=12)
     ax.grid(True, alpha=0.3)
-    ax.set_ylim([0, 1])
+    
+    # Set dynamic y-axis limits based on data range with padding
+    if all_values:
+        min_val = min(all_values)
+        max_val = max(all_values)
+        range_val = max_val - min_val
+        padding = max(range_val * 0.1, 0.02)  # 10% padding or minimum 2% padding
+        y_min = max(0, min_val - padding)
+        y_max = min(1, max_val + padding)
+        ax.set_ylim([y_min, y_max])
+    else:
+        ax.set_ylim([0, 1])
     
     plt.tight_layout()
     
@@ -190,18 +212,31 @@ def create_class_f1_graph(df, output_dir, matrix_row, matrix_col):
     
     fig, ax = plt.subplots(1, 1, figsize=(12, 8))
     
-    # Plot each class F1 score
+    # Plot each class F1 score and collect all values for dynamic scaling
     colors = plt.cm.Set2(np.linspace(0, 1, len(class_data)))
+    all_values = []
     for i, (class_name, values) in enumerate(class_data.items()):
         ax.plot(df['cost_matrix_value'][:len(values)], values, '-o', linewidth=2, markersize=6, 
                 label=f'Class {class_name.split("_")[1]}', color=colors[i])
+        all_values.extend(values)
     
     ax.set_title(f'Class F1 Scores vs Cost Matrix Value [{matrix_row},{matrix_col}]', fontsize=16, fontweight='bold')
     ax.set_xlabel(f'Cost Matrix Value [{matrix_row},{matrix_col}]', fontsize=12)
     ax.set_ylabel('F1 Score', fontsize=12)
     ax.legend(fontsize=12)
     ax.grid(True, alpha=0.3)
-    ax.set_ylim([0, 1])
+    
+    # Set dynamic y-axis limits based on data range with padding
+    if all_values:
+        min_val = min(all_values)
+        max_val = max(all_values)
+        range_val = max_val - min_val
+        padding = max(range_val * 0.1, 0.02)  # 10% padding or minimum 2% padding
+        y_min = max(0, min_val - padding)
+        y_max = min(1, max_val + padding)
+        ax.set_ylim([y_min, y_max])
+    else:
+        ax.set_ylim([0, 1])
     
     plt.tight_layout()
     
@@ -315,12 +350,12 @@ def create_other_cells_raw_count_graph(df, output_dir, matrix_row, matrix_col, n
     print(f"Other cells raw counts graph saved to: {output_path}")
 
 def create_comprehensive_dashboard(df, output_dir, matrix_row, matrix_col, num_classes=3):
-    """Create a comprehensive dashboard with all 6 graphs in subplots."""
-    fig = plt.figure(figsize=(20, 24))
-    gs = fig.add_gridspec(3, 2, hspace=0.3, wspace=0.3)
+    """Create a comprehensive dashboard with all 7 graphs in subplots."""
+    fig = plt.figure(figsize=(24, 30))
+    gs = fig.add_gridspec(3, 3, hspace=0.3, wspace=0.3)
     
     fig.suptitle(f'Cost Matrix Sweep [{matrix_row},{matrix_col}]: Comprehensive Analysis Dashboard', 
-                fontsize=20, fontweight='bold', y=0.98)
+                fontsize=24, fontweight='bold', y=0.98)
     
     # 1. Overall Metrics (top left)
     ax1 = fig.add_subplot(gs[0, 0])
@@ -331,40 +366,75 @@ def create_comprehensive_dashboard(df, output_dir, matrix_row, matrix_col, num_c
     ax1.set_ylabel('Metric Value', fontsize=10)
     ax1.legend(fontsize=10)
     ax1.grid(True, alpha=0.3)
-    ax1.set_ylim([0, 1])
     
-    # 2. Class Accuracies (top right)
+    # Set dynamic y-axis limits for overall metrics
+    all_values = pd.concat([df['overall_accuracy'], df['overall_f1']])
+    min_val = all_values.min()
+    max_val = all_values.max()
+    range_val = max_val - min_val
+    padding = max(range_val * 0.1, 0.02)  # 10% padding or minimum 2% padding
+    y_min = max(0, min_val - padding)
+    y_max = min(1, max_val + padding)
+    ax1.set_ylim([y_min, y_max])
+    
+    # 2. Class Accuracies (top middle)
     ax2 = fig.add_subplot(gs[0, 1])
     class_acc_data = parse_class_metrics(df, 'class_accuracies')
+    all_acc_values = []
     if class_acc_data:
         colors = plt.cm.Set1(np.linspace(0, 1, len(class_acc_data)))
         for i, (class_name, values) in enumerate(class_acc_data.items()):
             ax2.plot(df['cost_matrix_value'][:len(values)], values, '-o', linewidth=2, markersize=5, 
                     label=f'Class {class_name.split("_")[1]}', color=colors[i])
+            all_acc_values.extend(values)
         ax2.legend(fontsize=10)
     ax2.set_title('Class Accuracies', fontweight='bold', fontsize=14)
     ax2.set_xlabel(f'Cost Matrix Value [{matrix_row},{matrix_col}]', fontsize=10)
     ax2.set_ylabel('Accuracy', fontsize=10)
     ax2.grid(True, alpha=0.3)
-    ax2.set_ylim([0, 1])
     
-    # 3. Class F1 Scores (middle left)
-    ax3 = fig.add_subplot(gs[1, 0])
+    # Set dynamic y-axis limits for class accuracies
+    if all_acc_values:
+        min_val = min(all_acc_values)
+        max_val = max(all_acc_values)
+        range_val = max_val - min_val
+        padding = max(range_val * 0.1, 0.02)  # 10% padding or minimum 2% padding
+        y_min = max(0, min_val - padding)
+        y_max = min(1, max_val + padding)
+        ax2.set_ylim([y_min, y_max])
+    else:
+        ax2.set_ylim([0, 1])
+    
+    # 3. Class F1 Scores (top right)
+    ax3 = fig.add_subplot(gs[0, 2])
     class_f1_data = parse_class_metrics(df, 'class_f1_scores')
+    all_f1_values = []
     if class_f1_data:
         colors = plt.cm.Set2(np.linspace(0, 1, len(class_f1_data)))
         for i, (class_name, values) in enumerate(class_f1_data.items()):
             ax3.plot(df['cost_matrix_value'][:len(values)], values, '-o', linewidth=2, markersize=5, 
                     label=f'Class {class_name.split("_")[1]}', color=colors[i])
+            all_f1_values.extend(values)
         ax3.legend(fontsize=10)
     ax3.set_title('Class F1 Scores', fontweight='bold', fontsize=14)
     ax3.set_xlabel(f'Cost Matrix Value [{matrix_row},{matrix_col}]', fontsize=10)
     ax3.set_ylabel('F1 Score', fontsize=10)
     ax3.grid(True, alpha=0.3)
-    ax3.set_ylim([0, 1])
     
-    # 4. Sweep Cell Raw Count (middle right)
-    ax4 = fig.add_subplot(gs[1, 1])
+    # Set dynamic y-axis limits for class F1 scores
+    if all_f1_values:
+        min_val = min(all_f1_values)
+        max_val = max(all_f1_values)
+        range_val = max_val - min_val
+        padding = max(range_val * 0.1, 0.02)  # 10% padding or minimum 2% padding
+        y_min = max(0, min_val - padding)
+        y_max = min(1, max_val + padding)
+        ax3.set_ylim([y_min, y_max])
+    else:
+        ax3.set_ylim([0, 1])
+    
+    # 4. Sweep Cell Raw Count (middle left)
+    ax4 = fig.add_subplot(gs[1, 0])
     sweep_col = f'confusion_{matrix_row}_{matrix_col}_raw'
     if sweep_col in df.columns:
         ax4.plot(df['cost_matrix_value'], df[sweep_col], 'purple', marker='o', linewidth=2, markersize=5, 
@@ -375,8 +445,8 @@ def create_comprehensive_dashboard(df, output_dir, matrix_row, matrix_col, num_c
     ax4.set_ylabel('Raw Count', fontsize=10)
     ax4.grid(True, alpha=0.3)
     
-    # 5. Count Percentage (bottom left)
-    ax5 = fig.add_subplot(gs[2, 0])
+    # 5. Count Percentage (middle center)
+    ax5 = fig.add_subplot(gs[1, 1])
     percentage_col = f'confusion_{matrix_row}_{matrix_col}_percentage'
     if percentage_col in df.columns:
         ax5.plot(df['cost_matrix_value'], df[percentage_col], 'orange', marker='o', linewidth=2, markersize=5,
@@ -396,8 +466,8 @@ def create_comprehensive_dashboard(df, output_dir, matrix_row, matrix_col, num_c
     ax5.set_ylabel('Percentage (%)', fontsize=10)
     ax5.grid(True, alpha=0.3)
     
-    # 6. Other Cells Raw Counts (bottom right)
-    ax6 = fig.add_subplot(gs[2, 1])
+    # 6. Other Cells Raw Counts (middle right)
+    ax6 = fig.add_subplot(gs[1, 2])
     other_cells_data = parse_other_cells(df, matrix_row, matrix_col, num_classes)
     if other_cells_data:
         colors = plt.cm.tab10(np.linspace(0, 1, len(other_cells_data)))
@@ -410,6 +480,55 @@ def create_comprehensive_dashboard(df, output_dir, matrix_row, matrix_col, num_c
     ax6.set_xlabel(f'Cost Matrix Value [{matrix_row},{matrix_col}]', fontsize=10)
     ax6.set_ylabel('Raw Count', fontsize=10)
     ax6.grid(True, alpha=0.3)
+    
+    # 7. FPR/FNR Scatter Plot (bottom center, spanning two columns)
+    ax7 = fig.add_subplot(gs[2, 0:2])
+    
+    # Calculate FPR and FNR values
+    fpr_values, fnr_values = calculate_fpr_fnr_for_swept_class(df, matrix_row, matrix_col, num_classes)
+    
+    if fpr_values and fnr_values:
+        # Create scatter plot with color gradient based on cost values
+        cost_values = df['cost_matrix_value'].values
+        
+        # Normalize cost values for color mapping (0 to 1)
+        cost_min, cost_max = cost_values.min(), cost_values.max()
+        normalized_costs = (cost_values - cost_min) / (cost_max - cost_min) if cost_max > cost_min else np.zeros_like(cost_values)
+        
+        # Create scatter plot with blue color gradient
+        scatter = ax7.scatter(fnr_values, fpr_values, c=normalized_costs, cmap='Blues', 
+                            s=80, alpha=0.7, edgecolors='black', linewidth=0.5)
+        
+        # Add colorbar
+        cbar = plt.colorbar(scatter, ax=ax7)
+        cbar.set_label(f'Cost Matrix Value [{matrix_row},{matrix_col}]', fontsize=10)
+        
+        # Set dynamic axis limits
+        if fnr_values:
+            x_min, x_max = min(fnr_values), max(fnr_values)
+            x_range = x_max - x_min
+            x_padding = max(x_range * 0.1, 2.0)
+            ax7.set_xlim([max(0, x_min - x_padding), min(100, x_max + x_padding)])
+        
+        if fpr_values:
+            y_min, y_max = min(fpr_values), max(fpr_values)
+            y_range = y_max - y_min
+            y_padding = max(y_range * 0.1, 2.0)
+            ax7.set_ylim([max(0, y_min - y_padding), min(100, y_max + y_padding)])
+    
+    ax7.set_title(f'ROC-like Analysis: Class {matrix_row}', fontweight='bold', fontsize=14)
+    ax7.set_xlabel(f'False Negative Rate (%) - Class {matrix_row}', fontsize=10)
+    ax7.set_ylabel(f'1 - False Positive Rate (%) - Class {matrix_row}', fontsize=10)
+    ax7.grid(True, alpha=0.3)
+    
+    # 8. Empty space (bottom right) - can be used for additional analysis or kept empty
+    ax8 = fig.add_subplot(gs[2, 2])
+    ax8.text(0.5, 0.5, 'Additional Analysis\nSpace Reserved', 
+             horizontalalignment='center', verticalalignment='center', 
+             fontsize=12, style='italic', alpha=0.5)
+    ax8.set_xlim([0, 1])
+    ax8.set_ylim([0, 1])
+    ax8.axis('off')
     
     plt.tight_layout()
     
@@ -473,6 +592,124 @@ def create_summary_statistics(df, output_dir, target_class, matrix_row, matrix_c
     
     print(f"Summary report saved to: {summary_file}")
 
+def calculate_fpr_fnr_for_swept_class(df, matrix_row, matrix_col, num_classes=3):
+    """
+    Calculate False Positive Rate and False Negative Rate for the swept class.
+    
+    For the swept class (matrix_row):
+    - FPR = FP / (FP + TN)
+    - FNR = FN / (FN + TP)
+    - Y-axis: 1 - FPR (specificity as percentage)
+    - X-axis: FNR (as percentage)
+    
+    Returns:
+        fpr_values: List of (1 - FPR) * 100 values (for y-axis)
+        fnr_values: List of FNR * 100 values (for x-axis)
+    """
+    fpr_values = []
+    fnr_values = []
+    
+    # Get other cells data
+    other_cells_data = parse_other_cells(df, matrix_row, matrix_col, num_classes)
+    
+    for idx, row in df.iterrows():
+        # Build confusion matrix for this row
+        confusion = {}
+        
+        # Add the swept cell
+        swept_cell_col = f'confusion_{matrix_row}_{matrix_col}_raw'
+        if swept_cell_col in df.columns:
+            confusion[(matrix_row, matrix_col)] = row[swept_cell_col]
+        
+        # Add other cells from other_cells_data
+        for cell_name, values in other_cells_data.items():
+            if idx < len(values):
+                parts = cell_name.split('_')
+                if len(parts) >= 3:
+                    r, c = int(parts[1]), int(parts[2])
+                    confusion[(r, c)] = values[idx]
+        
+        # Calculate metrics for the swept class (matrix_row)
+        tp = confusion.get((matrix_row, matrix_row), 0)
+        
+        # FP: other classes predicted as swept class
+        fp = sum(confusion.get((i, matrix_row), 0) for i in range(num_classes) if i != matrix_row)
+        
+        # FN: swept class predicted as other classes
+        fn = sum(confusion.get((matrix_row, j), 0) for j in range(num_classes) if j != matrix_row)
+        
+        # TN: other classes correctly not predicted as swept class
+        tn = sum(confusion.get((i, j), 0) for i in range(num_classes) for j in range(num_classes) 
+                if i != matrix_row and j != matrix_row)
+        
+        # Calculate rates
+        fpr = fp / (fp + tn) if (fp + tn) > 0 else 0
+        fnr = fn / (fn + tp) if (fn + tp) > 0 else 0
+        
+        # Y-axis: 1 - FPR (specificity as percentage)
+        # X-axis: FNR (as percentage)
+        fpr_values.append((1 - fpr) * 100)
+        fnr_values.append(fnr * 100)
+    
+    return fpr_values, fnr_values
+
+def create_fpr_fnr_scatter_plot(df, output_dir, matrix_row, matrix_col, num_classes=3):
+    """Create FPR vs FNR scatter plot for the swept class."""
+    
+    # Calculate FPR and FNR values
+    fpr_values, fnr_values = calculate_fpr_fnr_for_swept_class(df, matrix_row, matrix_col, num_classes)
+    
+    if not fpr_values or not fnr_values:
+        print("WARNING: No FPR/FNR data available for scatter plot")
+        return
+    
+    fig, ax = plt.subplots(1, 1, figsize=(12, 8))
+    
+    # Create scatter plot with color gradient based on cost values
+    cost_values = df['cost_matrix_value'].values
+    
+    # Normalize cost values for color mapping (0 to 1)
+    cost_min, cost_max = cost_values.min(), cost_values.max()
+    normalized_costs = (cost_values - cost_min) / (cost_max - cost_min) if cost_max > cost_min else np.zeros_like(cost_values)
+    
+    # Create scatter plot with blue color gradient
+    scatter = ax.scatter(fnr_values, fpr_values, c=normalized_costs, cmap='Blues', 
+                        s=100, alpha=0.7, edgecolors='black', linewidth=0.5)
+    
+    # Add colorbar
+    cbar = plt.colorbar(scatter, ax=ax)
+    cbar.set_label(f'Cost Matrix Value [{matrix_row},{matrix_col}]', fontsize=12)
+    
+    # Set titles and labels
+    ax.set_title(f'ROC-like Analysis: Class {matrix_row} vs Cost Matrix Value [{matrix_row},{matrix_col}]', 
+                fontsize=16, fontweight='bold')
+    ax.set_xlabel(f'False Negative Rate (%) - Class {matrix_row}', fontsize=12)
+    ax.set_ylabel(f'1 - False Positive Rate (%) - Class {matrix_row}', fontsize=12)
+    ax.grid(True, alpha=0.3)
+    
+    # Set dynamic axis limits
+    if fnr_values:
+        x_min, x_max = min(fnr_values), max(fnr_values)
+        x_range = x_max - x_min
+        x_padding = max(x_range * 0.1, 2.0)
+        ax.set_xlim([max(0, x_min - x_padding), min(100, x_max + x_padding)])
+    
+    if fpr_values:
+        y_min, y_max = min(fpr_values), max(fpr_values)
+        y_range = y_max - y_min
+        y_padding = max(y_range * 0.1, 2.0)
+        ax.set_ylim([max(0, y_min - y_padding), min(100, y_max + y_padding)])
+    
+    plt.tight_layout()
+    
+    # Save the plot
+    output_path = os.path.join(output_dir, f'fpr_fnr_scatter_{matrix_row}_{matrix_col}.png')
+    plt.savefig(output_path, dpi=300, bbox_inches='tight', facecolor='white')
+    plt.savefig(output_path.replace('.png', '.pdf'), bbox_inches='tight', facecolor='white')
+    plt.close()
+    
+    print(f"FPR/FNR scatter plot saved to: {output_path}")
+
 def main():
     parser = argparse.ArgumentParser(description='Analyze cost matrix sweep results')
     parser.add_argument('results_dir', help='Directory containing the results')
@@ -501,7 +738,7 @@ def main():
     
     print(f"Analyzing {len(df)} experiments...")
     
-    # Generate the 6 specific graphs
+    # Generate the 7 specific graphs
     print("Creating visualizations...")
     
     try:
@@ -511,6 +748,7 @@ def main():
         create_sweep_cell_raw_count_graph(df, graphs_dir, matrix_row, matrix_col)
         create_count_percentage_graph(df, graphs_dir, matrix_row, matrix_col)
         create_other_cells_raw_count_graph(df, graphs_dir, matrix_row, matrix_col)
+        create_fpr_fnr_scatter_plot(df, graphs_dir, matrix_row, matrix_col)
         
         # Create comprehensive dashboard
         create_comprehensive_dashboard(df, graphs_dir, matrix_row, matrix_col)
@@ -519,7 +757,7 @@ def main():
             create_summary_statistics(df, args.results_dir, target_class, matrix_row, matrix_col)
             print("Final comprehensive analysis completed.")
         
-        print(f"All 6 visualizations + comprehensive dashboard saved to: {graphs_dir}")
+        print(f"All 7 visualizations + comprehensive dashboard saved to: {graphs_dir}")
         
     except Exception as e:
         print(f"ERROR creating visualizations: {e}")

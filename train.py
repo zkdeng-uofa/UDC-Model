@@ -37,6 +37,7 @@ from utils.utils import (
     preprocess_hf_dataset,
     preprocess_kg_dataset,
     preprocess_local_folder_dataset,
+    preprocess_local_csv_dataset,
     perform_comprehensive_evaluation
 )
 
@@ -114,10 +115,19 @@ def main(script_args):
     elif script_args.dataset_host == "local_folder":
         if script_args.local_folder_path is None:
             raise ValueError("local_folder_path must be specified when dataset_host is 'local_folder'")
-        train_ds, val_ds, test_ds, class_names = preprocess_local_folder_dataset(
-            script_args.local_folder_path,
-            script_args.model
-        )
+        
+        if script_args.local_dataset_format == "csv":
+            train_ds, val_ds, test_ds, class_names = preprocess_local_csv_dataset(
+                script_args.local_folder_path,
+                script_args.model
+            )
+        elif script_args.local_dataset_format == "folder":
+            train_ds, val_ds, test_ds, class_names = preprocess_local_folder_dataset(
+                script_args.local_folder_path,
+                script_args.model
+            )
+        else:
+            raise ValueError(f"Unknown local_dataset_format: {script_args.local_dataset_format}. Must be 'folder' or 'csv'")
     else:
         raise ValueError(f"Unknown dataset_host: {script_args.dataset_host}")
 

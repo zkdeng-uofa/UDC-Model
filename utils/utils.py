@@ -5,6 +5,7 @@ import kagglehub
 import os
 import datetime
 import numpy as np
+import pandas as pd
 import torchvision.transforms as transforms
 from evaluate import load
 from dataclasses import dataclass, field
@@ -199,6 +200,10 @@ class ScriptTrainingArguments:
         default=None,
         metadata={"help": "Column index of cost matrix cell being swept (only used in sweep mode)"}
     )
+    local_dataset_format: str = field(
+        default="folder",
+        metadata={"help": "Format of local dataset: 'folder' for class subfolders or 'csv' for CSV files with image paths and labels"}
+    )
 
 def preprocess_hf_dataset(dataset_name, model_name):
     """
@@ -289,23 +294,53 @@ class ImagePreprocessor():
         self.test_transforms = image_processor.get_transform_for_test()
 
     def preprocess_train(self, image_batch):
-        """Preprocess training images with data augmentation."""
+        """Preprocess training images with data augmentation - loads images from paths on-demand."""
+        images = []
+        for img_path in image_batch["image_path"]:
+            try:
+                image = Image.open(img_path).convert("RGB")
+                images.append(image)
+            except Exception as e:
+                print(f"Warning: Could not load image {img_path}: {e}")
+                # Create a dummy image to maintain batch consistency
+                images.append(Image.new('RGB', (224, 224), color='black'))
+        
         image_batch["pixel_values"] = [
-            self.train_transforms(image.convert("RGB")) for image in image_batch["image"]
+            self.train_transforms(image) for image in images
         ]
         return image_batch
     
     def preprocess_val(self, image_batch):
-        """Preprocess validation images."""
+        """Preprocess validation images - loads images from paths on-demand."""
+        images = []
+        for img_path in image_batch["image_path"]:
+            try:
+                image = Image.open(img_path).convert("RGB")
+                images.append(image)
+            except Exception as e:
+                print(f"Warning: Could not load image {img_path}: {e}")
+                # Create a dummy image to maintain batch consistency
+                images.append(Image.new('RGB', (224, 224), color='black'))
+        
         image_batch["pixel_values"] = [
-            self.val_transforms(image.convert("RGB")) for image in image_batch["image"]
+            self.val_transforms(image) for image in images
         ]
         return image_batch
     
     def preprocess_test(self, image_batch):
-        """Preprocess test images."""
+        """Preprocess test images - loads images from paths on-demand."""
+        images = []
+        for img_path in image_batch["image_path"]:
+            try:
+                image = Image.open(img_path).convert("RGB")
+                images.append(image)
+            except Exception as e:
+                print(f"Warning: Could not load image {img_path}: {e}")
+                # Create a dummy image to maintain batch consistency
+                images.append(Image.new('RGB', (224, 224), color='black'))
+        
         image_batch["pixel_values"] = [
-            self.test_transforms(image.convert("RGB")) for image in image_batch["image"]
+            self.test_transforms(image) for image in images
         ]
         return image_batch
 
@@ -776,22 +811,11 @@ def preprocess_local_folder_dataset(folder_path, model_name, test_size=0.1, val_
     
     # Create datasets
     def create_dataset_dict(image_paths, labels):
-        """Create a dictionary compatible with HuggingFace datasets"""
+        """Create a dictionary compatible with HuggingFace datasets - stores paths, not loaded images"""
         dataset_dict = {
-            'image': [],
+            'image_path': image_paths,  # Store paths instead of loaded images
             'label': labels
         }
-        
-        # Load images
-        for img_path in image_paths:
-            try:
-                image = Image.open(img_path).convert('RGB')
-                dataset_dict['image'].append(image)
-            except Exception as e:
-                print(f"Warning: Could not load image {img_path}: {e}")
-                # Skip this image and corresponding label
-                continue
-        
         return dataset_dict
     
     # Create dataset dictionaries
@@ -831,6 +855,174 @@ def preprocess_local_folder_dataset(folder_path, model_name, test_size=0.1, val_
     class_names = [idx_to_class[i] for i in range(len(class_folders))]
     
     return train_dataset, val_dataset, test_dataset, class_names 
+
+def preprocess_local_csv_dataset(folder_path, model_name, test_size=0.1, val_size=0.1, random_state=42):
+    """
+    Load images from a local folder with CSV files containing image paths and labels.
+    
+    Expected structure:
+    - folder_path/train_dataset.csv (contains image_path and binary_label columns)
+    - folder_path/test_dataset.csv (contains image_path and binary_label columns)
+    - Images referenced by relative paths in the CSV files (e.g., "jpeg/image1.jpg")
+    
+    CSV columns expected:
+    - image_path: Relative path to image file from the base folder_path
+    - binary_label: Class label for the image
+    
+    Args:
+        folder_path (str): Path to the root folder containing CSV files and images
+        model_name (str): Model name for the image processor
+        test_size (float): Proportion of data to use for testing (default: 0.1)
+        val_size (float): Proportion of remaining data to use for validation (default: 0.1)
+        random_state (int): Random seed for reproducible splits
+    
+    Returns:
+        tuple: (train_ds, val_ds, test_ds, class_names) - preprocessed datasets and class names
+    """
+    print(f"Loading CSV-based dataset from: {folder_path}")
+    
+    # Check if path exists
+    if not os.path.exists(folder_path):
+        raise ValueError(f"Dataset path does not exist: {folder_path}")
+    
+    # Check for required files and folders
+    train_csv_path = os.path.join(folder_path, "train_dataset.csv")
+    test_csv_path = os.path.join(folder_path, "test_dataset.csv")
+    
+    if not os.path.exists(train_csv_path):
+        raise ValueError(f"Train CSV file not found: {train_csv_path}")
+    if not os.path.exists(test_csv_path):
+        raise ValueError(f"Test CSV file not found: {test_csv_path}")
+    
+    # Load CSV files
+    try:
+        train_df = pd.read_csv(train_csv_path)
+        test_df = pd.read_csv(test_csv_path)
+    except Exception as e:
+        raise ValueError(f"Error reading CSV files: {e}")
+    
+    # Validate CSV structure
+    required_columns = ['image_path', 'binary_label']
+    
+    for col in required_columns:
+        if col not in train_df.columns:
+            raise ValueError(f"Train CSV missing required column: {col}")
+        if col not in test_df.columns:
+            raise ValueError(f"Test CSV missing required column: {col}")
+    
+    # Get unique class names and create mappings
+    all_labels = pd.concat([train_df['binary_label'], test_df['binary_label']]).unique()
+    class_names = sorted(all_labels)
+    class_to_idx = {cls_name: idx for idx, cls_name in enumerate(class_names)}
+    idx_to_class = {idx: cls_name for cls_name, idx in class_to_idx.items()}
+    
+    print(f"Found {len(class_names)} classes: {class_names}")
+    
+    # Function to load and validate images from CSV
+    def load_images_from_csv(df, base_folder, class_to_idx):
+        image_paths = []
+        labels = []
+        skipped_images = 0
+        
+        # Supported image extensions
+        image_extensions = {'.jpg', '.jpeg', '.png', '.bmp', '.tiff', '.tif'}
+        
+        for _, row in df.iterrows():
+            # The image_path already includes the subfolder (e.g., "jpeg/filename.jpg")
+            relative_path = row['image_path']
+            label_name = row['binary_label']
+            
+            # Construct full image path by joining base folder with the relative path
+            image_path = os.path.join(base_folder, relative_path)
+            
+            # Check if image file exists and has valid extension
+            if not os.path.exists(image_path):
+                print(f"Warning: Image file not found: {image_path}")
+                skipped_images += 1
+                continue
+            
+            # Extract filename from path for extension check
+            filename = os.path.basename(relative_path)
+            if not any(filename.lower().endswith(ext) for ext in image_extensions):
+                print(f"Warning: Unsupported image format: {filename}")
+                skipped_images += 1
+                continue
+            
+            # Check if label is valid
+            if label_name not in class_to_idx:
+                print(f"Warning: Unknown label '{label_name}' for image {relative_path}")
+                skipped_images += 1
+                continue
+            
+            image_paths.append(image_path)
+            labels.append(class_to_idx[label_name])
+        
+        if skipped_images > 0:
+            print(f"Skipped {skipped_images} images due to missing files or invalid labels")
+        
+        return image_paths, labels
+    
+    # Load images and labels from CSV files (note: no longer using images_folder, using folder_path directly)
+    train_image_paths, train_labels = load_images_from_csv(train_df, folder_path, class_to_idx)
+    test_image_paths, test_labels = load_images_from_csv(test_df, folder_path, class_to_idx)
+    
+    print(f"Loaded {len(train_image_paths)} training images")
+    print(f"Loaded {len(test_image_paths)} test images")
+    
+    # Split training data into train and validation sets
+    if len(train_image_paths) == 0:
+        raise ValueError("No valid training images found")
+    
+    X_train, X_val, y_train, y_val = train_test_split(
+        train_image_paths, train_labels, test_size=val_size, random_state=random_state, stratify=train_labels
+    )
+    
+    print(f"Data split: Train={len(X_train)}, Val={len(X_val)}, Test={len(test_image_paths)}")
+    
+    # Create datasets
+    def create_dataset_dict(image_paths, labels):
+        """Create a dictionary compatible with HuggingFace datasets"""
+        dataset_dict = {
+            'image_path': image_paths,
+            'label': labels
+        }
+        
+        return dataset_dict
+    
+    # Create dataset dictionaries
+    train_dict = create_dataset_dict(X_train, y_train)
+    val_dict = create_dataset_dict(X_val, y_val)
+    test_dict = create_dataset_dict(test_image_paths, test_labels)
+    
+    # Convert to HuggingFace Dataset objects
+    train_dataset = Dataset.from_dict(train_dict)
+    val_dataset = Dataset.from_dict(val_dict)
+    test_dataset = Dataset.from_dict(test_dict)
+    
+    # Set up image processor and preprocessing
+    image_processor = CustomImageProcessor.from_pretrained(model_name, use_fast=True)
+    
+    # Create a dummy dataset object for ImagePreprocessor (it expects a dataset with some structure)
+    class DummyDataset:
+        def __init__(self):
+            pass
+    
+    dummy_dataset = DummyDataset()
+    image_preprocessor = ImagePreprocessor(dummy_dataset, image_processor)
+    
+    # Apply transforms
+    train_dataset.set_transform(image_preprocessor.preprocess_train)
+    val_dataset.set_transform(image_preprocessor.preprocess_val)
+    test_dataset.set_transform(image_preprocessor.preprocess_test)
+    
+    # Print dataset info
+    print(f"CSV-based dataset created successfully!")
+    print(f"Class mapping: {idx_to_class}")
+    print(f"Train samples: {len(train_dataset)}")
+    print(f"Validation samples: {len(val_dataset)}")
+    print(f"Test samples: {len(test_dataset)}")
+    
+    return train_dataset, val_dataset, test_dataset, class_names
 
 def save_run_configuration(script_args, output_dir, dataset_name=None):
     """
@@ -876,7 +1068,8 @@ def save_run_configuration(script_args, output_dir, dataset_name=None):
             "dataset": script_args.dataset,
             "dataset_location": dataset_location,
             "local_dataset_name": script_args.local_dataset_name,
-            "local_folder_path": script_args.local_folder_path
+            "local_folder_path": script_args.local_folder_path,
+            "local_dataset_format": script_args.local_dataset_format
         },
         "training_parameters": {
             "batch_size": script_args.batch_size,

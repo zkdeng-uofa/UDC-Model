@@ -5,12 +5,12 @@
         "step": 50
     },
     "matrix_cell": {
-        "row": 0,
+        "row": 1,
         "col": 2,
         "description": "Matrix cell [row, col] to modify during sweep"
     },
     "experiment": {
-        "output_dir": "results/sweep_pos_0to1000_results_0_2",
+        "output_dir": "results/sweep_pos_0to1000_results_1_2",
         "base_config": "config/localDatasetConfig.json",
         "description": "Cost matrix sweep experiment"
     },

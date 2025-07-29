@@ -2,6 +2,7 @@
     "dataset": "local_black_widows",
     "dataset_host": "local_folder",
     "local_folder_path": "/Users/zideng/Work/LDAWT/examples/black_widows_6_17",
+    "local_dataset_format": "folder",
     "model": "microsoft/resnet-50",
     "weights": "weights/pytorch_model.bin",
     "learning_rate": 0.0005,

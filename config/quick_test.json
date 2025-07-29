@@ -6,12 +6,12 @@
     },
     "matrix_cell": {
         "row": 0,
-        "col": 2,
+        "col": 1,
         "description": "Quick test"
     },
     "experiment": {
-        "output_dir": "results/quick_test_results3",
-        "base_config": "config/localDatasetConfig.json",
+        "output_dir": "results/quick_test_results_csv",
+        "base_config": "config/localCSVDatasetConfig.json",
         "description": "Quick test sweep"
     },
     "analysis": {
